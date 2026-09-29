@@ -1,0 +1,1415 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0e1513">
+<title>Tidsfönster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Tidsfönster – fältvy i kameran. Medvetet ett mörkt utseende: det ska läsas ovanpå kamerabilden och i sol. */
+:root{
+  --ink:#0e1513; --ink-2:#151f1c; --ink-3:#1d2a26;
+  --glass:rgba(11,18,16,.82); --glass-2:rgba(11,18,16,.6);
+  --line:rgba(224,240,232,.13); --line-2:rgba(224,240,232,.26);
+  --text:#eef4f1; --muted:#b2c0b9; --dim:#80908a;
+  --accent:#62c9a8; --accent-ink:#052219;
+  --water:#57a9e8; --shore:#fff0c9;
+  --hog:#e5533c; --medel:#f2a541;
+  --ok:#6fd394; --warn:#f2c14e; --err:#ff7a68;
+  --r:14px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--ink);color:var(--text);font:15px/1.5 'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+.mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,label:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* ---------- Startsida ---------- */
+#setup{min-height:100%;padding-block:calc(env(safe-area-inset-top,0px) + 22px) calc(env(safe-area-inset-bottom,0px) + 32px);padding-inline:16px;max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.brand{display:flex;gap:14px;align-items:center;padding-block:4px 6px}
+.brand svg{flex:none}
+.brand h1{margin:0;font-size:26px;line-height:1.1;font-weight:700;letter-spacing:-.015em}
+.brand p{margin:3px 0 0;color:var(--muted);font-size:14px;text-wrap:balance}
+.step{background:var(--ink-2);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px}
+.step h2{margin:0;font-size:16px;font-weight:600;display:flex;gap:10px;align-items:baseline;text-wrap:balance}
+.step h2 .n{font:500 12px 'IBM Plex Mono',monospace;color:var(--accent);letter-spacing:.08em}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{appearance:none;border:1px solid var(--line-2);background:var(--ink-3);border-radius:10px;padding:10px 14px;font-weight:500;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.38;cursor:not-allowed;transform:none}
+.btn.primary:disabled{background:var(--ink-3);color:var(--dim);border-color:var(--line-2);opacity:1}
+.btn.wide{flex:1 1 180px}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:8px 13px;min-height:40px;font:500 13px 'IBM Plex Mono',monospace}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.fld{display:flex;flex-direction:column;gap:4px;flex:1 1 130px;min-width:0}
+.fld span{font-size:12px;color:var(--dim);letter-spacing:.04em;text-transform:uppercase}
+.fld input{background:var(--ink);border:1px solid var(--line-2);border-radius:9px;padding:9px 11px;min-height:42px;width:100%;font-family:'IBM Plex Mono',monospace}
+.hint{color:var(--muted);font-size:13.5px;margin:0;max-width:62ch}
+.hint b{color:var(--text);font-weight:600}
+.areaTxt{font:500 13.5px 'IBM Plex Mono',monospace;color:var(--text);background:var(--ink);border:1px dashed var(--line-2);border-radius:9px;padding:9px 11px}
+.areaTxt.empty{color:var(--dim)}
+.files{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.files li{display:flex;justify-content:space-between;gap:10px;font-size:13.5px;border-top:1px solid var(--line);padding-top:6px}
+.files li span:last-child{font-family:'IBM Plex Mono',monospace;color:var(--muted);white-space:nowrap}
+.filebtn{position:relative;overflow:hidden}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.stat{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.stat li{display:grid;grid-template-columns:12px 1fr;gap:10px;align-items:start;font-size:13.5px}
+.stat li i{width:10px;height:10px;border-radius:50%;margin-top:5px;background:var(--dim)}
+.stat li.pending i{background:var(--warn);animation:pulse 1s infinite alternate}
+.stat li.ok i{background:var(--ok)} .stat li.err i{background:var(--err)}
+.stat li b{font-weight:600;display:block}
+.stat li span{color:var(--muted)}
+@keyframes pulse{to{opacity:.35}}
+.curve{background:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px 6px 4px}
+.curve svg{display:block;width:100%;height:auto}
+.curve figcaption{font-size:12px;color:var(--dim);padding:2px 6px 4px}
+.saved{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:13.5px;color:var(--muted);background:rgba(98,201,168,.08);border:1px solid rgba(98,201,168,.3);border-radius:var(--r);padding:10px 12px}
+.go{display:flex;flex-direction:column;gap:10px}
+.foot{font-size:12.5px;color:var(--dim);margin:0;max-width:62ch}
+.foot a{color:var(--muted)}
+
+/* ---------- Vyn (kamera / skrivbord) ---------- */
+#view{position:fixed;inset:0;background:#000;overflow:hidden;-webkit-user-select:none;user-select:none;overscroll-behavior:none}
+#view.desk{background:linear-gradient(180deg,#8fa9bb 0%,#c7d4d9 48%,#b9c4be 52%,#9aa79f 100%)}
+#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#under{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(40,110,170,.16),rgba(20,70,120,.38))}
+#under div{position:absolute;left:12px;top:calc(env(safe-area-inset-top,0px) + 88px);max-width:calc(100% - 172px);background:rgba(20,70,120,.85);border:1px solid rgba(87,169,232,.6);border-radius:10px;padding:6px 10px;font-size:13px}
+.hud-top{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center;pointer-events:none;padding-right:152px}
+.chip{pointer-events:auto;background:var(--glass);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:999px;padding:5px 10px;font:500 12.5px 'IBM Plex Mono',monospace;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+.chip.ok{color:var(--ok)} .chip.warn{color:var(--warn)} .chip.err{color:var(--err)}
+.chip.ok span,.chip.warn span,.chip.err span{color:var(--text)}
+.chip.demo{color:var(--warn);border-color:rgba(242,193,78,.4)}
+button.chip{min-height:32px}
+#mini{position:absolute;right:12px;top:calc(env(safe-area-inset-top,0px) + 8px);width:132px;height:132px;border-radius:50%;border:1px solid var(--line-2);background:var(--glass);box-shadow:0 4px 18px rgba(0,0,0,.35)}
+#miniLbl{position:absolute;right:12px;top:calc(env(safe-area-inset-top,0px) + 144px);width:132px;text-align:center;font:500 11px 'IBM Plex Mono',monospace;color:var(--text);text-shadow:0 1px 3px #000;pointer-events:none}
+#cross{position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;pointer-events:none;opacity:.8}
+#cross::before,#cross::after{content:"";position:absolute;background:#fff;box-shadow:0 0 2px rgba(0,0,0,.8)}
+#cross::before{left:13px;top:0;width:2px;height:28px} #cross::after{top:13px;left:0;height:2px;width:28px}
+.panel{position:absolute;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);max-width:640px;margin:0 auto;background:var(--glass);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:18px;padding:10px 14px 12px;display:flex;flex-direction:column;gap:9px;max-height:62vh;overflow:auto}
+.handle{align-self:center;width:44px;height:18px;border:0;background:transparent;position:relative;margin:-4px 0 -6px}
+.handle::after{content:"";position:absolute;left:8px;right:8px;top:7px;height:4px;border-radius:2px;background:var(--line-2)}
+.yrow{display:flex;justify-content:space-between;gap:12px;align-items:flex-end}
+.yrow .y{flex:none}
+.yrow .y b{white-space:nowrap;display:block;font:600 24px/1.1 'IBM Plex Sans',sans-serif;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.yrow .y span{font-size:13px;color:var(--muted)}
+.yrow .l{text-align:right;font-size:13px;color:var(--muted);line-height:1.35}
+.yrow .l b{color:var(--water);font-weight:600;font-family:'IBM Plex Mono',monospace}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:32px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(90deg,#27557a,#4d8fc2 55%,#9fb6a4)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:var(--shore);border:3px solid #0b1210;margin-top:-10px;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:linear-gradient(90deg,#27557a,#4d8fc2 55%,#9fb6a4)}
+input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--shore);border:3px solid #0b1210}
+.chips{display:flex;gap:6px;overflow-x:auto;touch-action:pan-x;scrollbar-width:none;padding-bottom:2px;margin-inline:-2px;padding-inline:2px}
+.chips::-webkit-scrollbar{display:none}
+.chips button{flex:none;border:1px solid var(--line-2);background:transparent;border-radius:999px;padding:6px 11px;font:500 12.5px 'IBM Plex Mono',monospace;min-height:34px;color:var(--muted)}
+.chips button.on{background:var(--text);color:#0b1210;border-color:var(--text)}
+.chips.lay button{display:inline-flex;gap:6px;align-items:center;font-family:'IBM Plex Sans',sans-serif;font-size:13px}
+.chips.lay button i{width:9px;height:9px;border-radius:2px;flex:none}
+.chips.lay button:not(.on) i{opacity:.4}
+.acts{display:flex;gap:8px}
+.acts .btn{flex:1;min-height:40px;padding:8px 10px;font-size:14px;background:rgba(255,255,255,.06)}
+.acts .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.more{display:flex;flex-direction:column;gap:9px}
+.more summary{cursor:pointer;color:var(--muted);font-size:13.5px;min-height:32px;display:flex;align-items:center;gap:8px;list-style:none}
+.more summary::-webkit-details-marker{display:none}
+.more summary::before{content:'▸';font-size:11px;transition:transform .15s}
+.more[open] summary::before{transform:rotate(90deg)}
+.more[open] summary{margin-bottom:2px}
+.collapsed .fold{display:none}
+/* kort */
+.card h3{margin:0;padding-right:44px;font-size:18px;line-height:1.25;text-wrap:balance}
+.card .sub{font:500 12.5px 'IBM Plex Mono',monospace;color:var(--muted)}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;border:1px solid var(--line-2);border-radius:999px;padding:3px 9px;width:max-content}
+.tag i{width:8px;height:8px;border-radius:50%}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:13.5px;margin:0}
+.kv dt{color:var(--dim)} .kv dd{margin:0}
+.card .x{position:absolute;right:8px;top:8px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.08);font-size:20px;line-height:1}
+/* kalibrering */
+.cal h3{margin:0;font-size:16px}
+.crow{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;font-size:13.5px}
+.crow>span{color:var(--muted)}
+.stepper{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.stepper button{min-width:44px;min-height:38px;border:1px solid var(--line-2);background:rgba(255,255,255,.06);border-radius:9px;padding:4px 8px;font:500 13px 'IBM Plex Mono',monospace}
+.stepper output{min-width:74px;text-align:center;font:600 14px 'IBM Plex Mono',monospace}
+#toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 60px);transform:translate(-50%,-12px);opacity:0;transition:.25s;background:var(--glass);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid var(--line-2);border-radius:12px;padding:9px 14px;font-size:14px;max-width:min(92vw,460px);z-index:50;pointer-events:none;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#toast.err{border-color:var(--err)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ================= STARTSIDA ================= -->
+<main id="setup">
+  <header class="brand">
+    <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">
+      <rect x="1" y="1" width="46" height="46" rx="12" fill="#151f1c" stroke="rgba(224,240,232,.26)"/>
+      <path d="M6 30 C14 28 17 18 25 17 S37 22 42 13" fill="none" stroke="#9fb6a4" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M6 34 H42" stroke="#57a9e8" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M6 39 H42" stroke="#57a9e8" stroke-width="2.4" stroke-linecap="round" opacity=".5"/>
+      <circle cx="25" cy="17" r="3.2" fill="#fff0c9"/>
+    </svg>
+    <div>
+      <h1>Tidsfönster</h1>
+      <p>Forntida hav, potentialzoner och lämningar i kameran när du går i fält.</p>
+    </div>
+  </header>
+
+  <div class="saved" id="savedBox" hidden>
+    <span id="savedTxt">Sparat område</span>
+    <button class="btn ghost" id="bForget" type="button">Rensa</button>
+  </div>
+
+  <section class="step" aria-labelledby="h1">
+    <h2 id="h1"><span class="n">1</span>Område</h2>
+    <div class="row">
+      <button class="btn" id="bMyPos" type="button">Min position</button>
+      <button class="btn" id="bFromFile" type="button" disabled>Utredningsområdet i filen</button>
+    </div>
+    <div class="row">
+      <label class="fld"><span>N (SWEREF 99 TM)</span><input id="inN" type="text" inputmode="numeric" placeholder="6 600 000" autocomplete="off"></label>
+      <label class="fld"><span>E</span><input id="inE" type="text" inputmode="numeric" placeholder="650 000" autocomplete="off"></label>
+      <button class="btn" id="bCoord" type="button" style="align-self:flex-end">Använd</button>
+    </div>
+    <div class="row">
+      <span class="hint">Radie</span>
+      <div class="seg" id="segR" role="group" aria-label="Radie">
+        <button type="button" data-r="500">500 m</button><button type="button" data-r="1000">1 000 m</button><button type="button" data-r="1500">1 500 m</button>
+      </div>
+    </div>
+    <p class="hint" id="posMsg" hidden></p>
+    <div class="areaTxt empty" id="areaTxt">Inget område valt</div>
+  </section>
+
+  <section class="step" aria-labelledby="h2">
+    <h2 id="h2"><span class="n">2</span>Lager från potentialmodellen</h2>
+    <p class="hint">Exportera i <b>Arkeologisk potentialmodell</b>: <b>Exportera → GeoJSON</b> (zoner, potentialklasser, utredningsområde) och <b>Exportera lämningar</b>. Egna GeoJSON-lager från ArcGIS Pro fungerar också, i SWEREF 99 TM eller WGS 84.</p>
+    <div class="row">
+      <label class="btn filebtn" for="inFile">Lägg till filer<input id="inFile" type="file" accept=".geojson,.json,application/geo+json,application/json" multiple></label>
+      <button class="btn ghost" id="bClearFiles" type="button" hidden>Ta bort alla</button>
+    </div>
+    <ul class="files" id="fileList"></ul>
+  </section>
+
+  <section class="step" aria-labelledby="h3">
+    <h2 id="h3"><span class="n">3</span>Terräng och strandförskjutning</h2>
+    <p class="hint">Hämtar Lantmäteriets höjdmodell och SGU:s strandförskjutningsmodell för området och sparar dem på telefonen. Gör det gärna med wifi innan du åker ut.</p>
+    <div class="row">
+      <button class="btn wide" id="bFetch" type="button" disabled>Välj ett område först</button>
+      <button class="btn ghost" id="bDiag" type="button">Testa anslutningen</button>
+    </div>
+    <ul class="stat" id="statList"></ul>
+    <ul class="stat" id="diagList" hidden></ul>
+    <figure class="curve" id="curveBox" hidden style="margin:0"><div id="curveSvg"></div><figcaption id="curveCap"></figcaption></figure>
+  </section>
+
+  <div class="go">
+    <button class="btn primary" id="bAR" type="button" disabled>Starta kameravy</button>
+    <div class="row">
+      <button class="btn wide" id="bDesk" type="button" disabled>Testa vid skrivbordet</button>
+      <button class="btn wide ghost" id="bDemo" type="button">Visa exempel</button>
+    </div>
+    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret.</p>
+  </div>
+</main>
+
+<!-- ================= VY ================= -->
+<div id="view" hidden>
+  <video id="cam" playsinline muted autoplay></video>
+  <canvas id="gl"></canvas>
+  <div id="under" hidden><div id="underTxt"></div></div>
+  <div id="cross"></div>
+
+  <div class="hud-top">
+    <button class="chip" id="bExit" type="button" aria-label="Tillbaka till start">✕</button>
+    <span class="chip" id="cGps"><i class="dot"></i><span>GPS –</span></span>
+    <span class="chip" id="cHead"><span>–°</span></span>
+    <span class="chip" id="cElev"><span>– m ö.h.</span></span>
+    <span class="chip warn" id="cEdge" hidden><i class="dot"></i><span></span></span>
+    <span class="chip demo" id="cDemo" hidden><i class="dot"></i><span>Exempeldata</span></span>
+  </div>
+  <canvas id="mini" aria-label="Karta"></canvas>
+  <div id="miniLbl"></div>
+
+  <!-- huvudpanel -->
+  <section class="panel" id="sheet">
+    <button class="handle" id="bFold" type="button" aria-label="Fäll ihop panelen"></button>
+    <div class="yrow">
+      <div class="y"><b id="yrTxt">–</b><span id="perTxt"></span></div>
+      <div class="l" id="lvlTxt"></div>
+    </div>
+    <input type="range" id="yr" min="-9500" max="1900" step="50" aria-label="År">
+    <div class="fold">
+      <div class="chips" id="perChips" role="group" aria-label="Perioder"></div>
+    </div>
+    <div class="fold">
+      <div class="chips lay" id="layChips" role="group" aria-label="Lager"></div>
+    </div>
+    <div class="acts fold">
+      <button class="btn" id="bCal" type="button">Kalibrera</button>
+      <button class="btn" id="bLock" type="button">Lås position</button>
+    </div>
+  </section>
+
+  <!-- infokort -->
+  <section class="panel card" id="card" hidden></section>
+
+  <!-- kalibrering -->
+  <section class="panel cal" id="calib" hidden>
+    <h3>Kalibrera</h3>
+    <p class="hint" id="calHint">Dra i bilden: åt sidan vrider lagren, upp och ned höjer och sänker dem. Säkrast: tryck på en lämning du ser och välj <b>Rikta in mot den</b>.</p>
+    <div class="crow"><span>Riktning</span><div class="stepper"><button type="button" data-c="yaw" data-d="-1">−1°</button><button type="button" data-c="yaw" data-d="-0.2">−.2</button><output id="oYaw">0,0°</output><button type="button" data-c="yaw" data-d="0.2">+.2</button><button type="button" data-c="yaw" data-d="1">+1°</button></div></div>
+    <div class="crow"><span>Kompass</span><div class="seg" id="segComp"><button type="button" data-v="0">Följer</button><button type="button" data-v="1">Låst</button></div></div>
+    <div class="crow"><span>Höjdjustering</span><div class="stepper"><button type="button" data-c="h" data-d="-0.5">−</button><output id="oH">0,0 m</output><button type="button" data-c="h" data-d="0.5">+</button></div></div>
+    <details class="more"><summary>Fler inställningar</summary>
+    <div class="crow"><span>Ögonhöjd</span><div class="stepper"><button type="button" data-c="eye" data-d="-0.1">−</button><output id="oEye">1,6 m</output><button type="button" data-c="eye" data-d="0.1">+</button></div></div>
+    <div class="crow"><span>Bildvinkel</span><div class="stepper"><button type="button" data-c="fov" data-d="-1">−</button><output id="oFov">67°</output><button type="button" data-c="fov" data-d="1">+</button></div></div>
+    <div class="crow"><span>Havsyta</span><div class="stepper"><div class="seg" id="segLvl"><button type="button" data-v="sgu">SGU</button><button type="button" data-v="egen">Egen</button></div><button type="button" data-c="lvl" data-d="-0.5" class="lvlb">−</button><output id="oLvl" class="lvlb">–</output><button type="button" data-c="lvl" data-d="0.5" class="lvlb">+</button></div></div>
+    <div class="crow"><span>Position</span><div class="row"><button class="btn" id="bCenter" type="button" style="min-height:38px;padding:6px 10px;font-size:13px">Mitt i området</button></div></div>
+    </details>
+    <div class="acts">
+      <button class="btn" id="bCalReset" type="button">Återställ</button>
+      <button class="btn primary" id="bCalDone" type="button">Klar</button>
+    </div>
+  </section>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+// =====================================================================
+// Hjälpfunktioner
+// =====================================================================
+const $ = (id) => document.getElementById(id);
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const fmt = (x, d = 0) => (x == null || !isFinite(x)) ? '–' : Number(x).toLocaleString('sv-SE', { minimumFractionDigits: d, maximumFractionDigits: d });
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const fmtYear = (y) => y < 0 ? `${fmt(Math.round(-y / 50) * 50)} f.Kr.` : `${fmt(Math.round(y / 50) * 50)} e.Kr.`;
+const wrap180 = (a) => ((a % 360) + 540) % 360 - 180;
+const DIRS = ['N', 'NO', 'O', 'SO', 'S', 'SV', 'V', 'NV'];
+const dirName = (az) => DIRS[Math.round(((az % 360) + 360) % 360 / 45) % 8];
+const median = (a) => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const quantile = (a, q) => { const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; };
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('tf.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('tf.' + k, JSON.stringify(v)); } catch (e) { } },
+};
+function toast(msg, err) {
+  const t = $('toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.className = '', 4200);
+}
+const withTimeout = (pr, ms) => Promise.race([pr, new Promise((_, rej) => setTimeout(() => rej(new Error('tidsgräns')), ms))]);
+const IDB = {
+  open() { return new Promise((res, rej) => { const r = indexedDB.open('tidsfonster', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  async put(k, v) { try { const db = await withTimeout(this.open(), 4000); await withTimeout(new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }), 8000); return true; } catch (e) { return false; } },
+  async get(k) { try { const db = await withTimeout(this.open(), 4000); return await withTimeout(new Promise((res, rej) => { const r = db.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }), 8000); } catch (e) { return null; } },
+  async del(k) { try { const db = await withTimeout(this.open(), 4000); await withTimeout(new Promise((res) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').delete(k); t.oncomplete = res; t.onerror = res; }), 4000); } catch (e) { } },
+};
+
+// SWEREF 99 TM ⇄ WGS 84 (Gauss–Krüger, samma formler som i potentialmodellen)
+const GK = (() => {
+  const axis = 6378137.0, f = 1 / 298.257222101, lon0 = 15, k0 = 0.9996, FN = 0, FE = 500000;
+  const e2 = f * (2 - f), n = f / (2 - f), aR = axis / (1 + n) * (1 + n * n / 4 + n ** 4 / 64);
+  const A = e2, B = (5 * e2 * e2 - e2 ** 3) / 6, C = (104 * e2 ** 3 - 45 * e2 ** 4) / 120, D = (1237 * e2 ** 4) / 1260;
+  const b1 = n / 2 - 2 * n * n / 3 + 5 * n ** 3 / 16 + 41 * n ** 4 / 180, b2 = 13 * n * n / 48 - 3 * n ** 3 / 5 + 557 * n ** 4 / 1440, b3 = 61 * n ** 3 / 240 - 103 * n ** 4 / 140, b4 = 49561 * n ** 4 / 161280;
+  const d1 = n / 2 - 2 * n * n / 3 + 37 * n ** 3 / 96 - n ** 4 / 360, d2 = n * n / 48 + n ** 3 / 15 - 437 * n ** 4 / 1440, d3 = 17 * n ** 3 / 480 - 37 * n ** 4 / 840, d4 = 4397 * n ** 4 / 161280;
+  const As = e2 + e2 * e2 + e2 ** 3 + e2 ** 4, Bs = -(7 * e2 * e2 + 17 * e2 ** 3 + 30 * e2 ** 4) / 6, Cs = (224 * e2 ** 3 + 889 * e2 ** 4) / 120, Ds = -(4279 * e2 ** 4) / 1260;
+  const rad = Math.PI / 180, L0 = lon0 * rad;
+  function toGrid(lat, lon) {
+    const phi = lat * rad, s = Math.sin(phi), c = Math.cos(phi), s2 = s * s;
+    const ps = phi - s * c * (A + B * s2 + C * s2 * s2 + D * s2 * s2 * s2), dl = lon * rad - L0;
+    const xi = Math.atan(Math.tan(ps) / Math.cos(dl)), eta = Math.atanh(Math.cos(ps) * Math.sin(dl));
+    const N = k0 * aR * (xi + b1 * Math.sin(2 * xi) * Math.cosh(2 * eta) + b2 * Math.sin(4 * xi) * Math.cosh(4 * eta) + b3 * Math.sin(6 * xi) * Math.cosh(6 * eta) + b4 * Math.sin(8 * xi) * Math.cosh(8 * eta)) + FN;
+    const E = k0 * aR * (eta + b1 * Math.cos(2 * xi) * Math.sinh(2 * eta) + b2 * Math.cos(4 * xi) * Math.sinh(4 * eta) + b3 * Math.cos(6 * xi) * Math.sinh(6 * eta) + b4 * Math.cos(8 * xi) * Math.sinh(8 * eta)) + FE;
+    return [E, N];
+  }
+  function toGeo(E, N) {
+    const xi = (N - FN) / (k0 * aR), eta = (E - FE) / (k0 * aR);
+    const xp = xi - d1 * Math.sin(2 * xi) * Math.cosh(2 * eta) - d2 * Math.sin(4 * xi) * Math.cosh(4 * eta) - d3 * Math.sin(6 * xi) * Math.cosh(6 * eta) - d4 * Math.sin(8 * xi) * Math.cosh(8 * eta);
+    const ep = eta - d1 * Math.cos(2 * xi) * Math.sinh(2 * eta) - d2 * Math.cos(4 * xi) * Math.sinh(4 * eta) - d3 * Math.cos(6 * xi) * Math.sinh(6 * eta) - d4 * Math.cos(8 * xi) * Math.sinh(8 * eta);
+    const ps = Math.asin(Math.sin(xp) / Math.cosh(ep)), dl = Math.atan(Math.sinh(ep) / Math.cos(xp));
+    const s = Math.sin(ps), c = Math.cos(ps), s2 = s * s;
+    return [(ps + s * c * (As + Bs * s2 + Cs * s2 * s2 + Ds * s2 * s2 * s2)) / rad, (L0 + dl) / rad];
+  }
+  return { toGrid, toGeo };
+})();
+// Ungefärlig missvisning i Sverige 2025–2027 (grader öst). Fel på 1–2° rättas med kalibreringen.
+const declination = (lat, lon) => 4.4 + 0.33 * (lon - 12) + 0.2 * (lat - 57.7);
+
+// Perioder – samma indelning som i potentialmodellen (östra Mellansverige)
+const PERIODS = [
+  { k: 'TM', name: 'Tidigmesolitikum', a: -9500, b: -6500 }, { k: 'SM', name: 'Senmesolitikum', a: -6500, b: -4000 },
+  { k: 'TN', name: 'Tidigneolitikum', a: -4000, b: -3300 }, { k: 'MN', name: 'Mellanneolitikum', a: -3300, b: -2350 },
+  { k: 'SN', name: 'Senneolitikum', a: -2350, b: -1700 }, { k: 'ÄBÅ', name: 'Äldre bronsålder', a: -1700, b: -1100 },
+  { k: 'YBÅ', name: 'Yngre bronsålder', a: -1100, b: -500 }, { k: 'ÄJÅ', name: 'Äldre järnålder', a: -500, b: 550 },
+  { k: 'YJÅ', name: 'Yngre järnålder', a: 550, b: 1050 }, { k: 'MED', name: 'Medeltid', a: 1050, b: 1520 },
+];
+const periodOf = (y) => { const p = PERIODS.find(p => y >= p.a && y < p.b); return p ? p.name : y < -9500 ? 'Senglacial tid' : 'Efter medeltid'; };
+
+// Lämningar – färg efter antikvarisk bedömning (samma kategorier som potentialmodellen, ljusare för kamerabilden)
+const LAMN_COLOR = { forn: '#b88cf0', moj: '#d6b0f7', ovr: '#74adec', ingen: '#b9c1c6', ej: '#8e979c', egen: '#e8f1ff' };
+const BK_NAME = { forn: 'Fornlämning', moj: 'Möjlig fornlämning', ovr: 'Övrig kulturhistorisk lämning', ingen: 'Ingen antikvarisk bedömning', ej: 'Ej kulturhistorisk lämning', egen: 'Eget lager' };
+function lamnInfo(p) {
+  const b = String(p.antikvariskbedomning || '').toLowerCase();
+  let bk = 'ingen';
+  if (b.startsWith('fornlämning')) bk = 'forn'; else if (b.includes('möjlig')) bk = 'moj'; else if (b.includes('övrig')) bk = 'ovr'; else if (b.includes('ej kulturhistorisk')) bk = 'ej';
+  return { bk, color: LAMN_COLOR[bk] };
+}
+const ZONE_COLOR = { 'Hög': '#e5533c', 'Medelhög': '#f2a541' };
+
+// =====================================================================
+// Tillstånd
+// =====================================================================
+const S = {
+  area: null,          // { E0, N0, R, src }
+  dem: null,           // { x0, y0, ds, nx, ny, z, src }
+  strand: null,        // { x0, y0, gs, nx, ny, emerge }
+  curve: null,         // { pts:[[år, m ö.h.]], cap }
+  feats: { zones: [], classes: [], study: [], lamn: [], egen: [] },
+  files: [],
+  year: store.get('year', -3500),
+  manualL: null,
+  lay: Object.assign({ hav: true, strand: true, pot: true, zon: true, lamn: true, egen: true, kurv: false }, store.get('lay', {})),
+  demo: false, savedAt: null,
+};
+const CAL = Object.assign({ userOff: 0, eye: 1.6, hOff: 0, fov: 67.3, lockCompass: false }, store.get('cal', {}));
+const saveCal = () => store.set('cal', { userOff: CAL.userOff, eye: CAL.eye, hOff: CAL.hOff, fov: CAL.fov, lockCompass: CAL.lockCompass });
+let radius = store.get('radius', 1000);
+
+// =====================================================================
+// Nätverk: JSONP för ArcGIS (Länsstyrelsen), fetch för SGU
+// =====================================================================
+let jsonpN = 0;
+const FETCH = { cancel: false, on: false };
+const checkCancel = () => { if (FETCH.cancel) throw new Error('avbrutet'); };
+function jsonp(url, timeout = 30000) {
+  return new Promise((res, rej) => {
+    const cb = '__tfcb' + (++jsonpN) + '_' + Date.now().toString(36), s = document.createElement('script');
+    const done = () => { clearTimeout(t); window[cb] = () => { }; s.remove(); };
+    const t = setTimeout(() => { done(); rej(new Error('tidsgräns')); }, timeout);
+    window[cb] = d => { done(); if (d && d.error) rej(new Error(d.error.message || 'fel')); else res(d); };
+    s.onerror = () => { done(); rej(new Error('svaret nådde inte fram eller blockerades av webbläsaren')); };
+    s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cb; document.head.appendChild(s);
+  });
+}
+async function getJSON(u, timeout = 60000) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), timeout);
+  try {
+    const r = await fetch(u, { signal: ctl.signal });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('tidsgräns');
+    if (e instanceof TypeError) throw new Error('ingen kontakt – nätet, en brandvägg eller tjänsten själv stoppar anropet');
+    throw e;
+  } finally { clearTimeout(t); }
+}
+
+// ---------- Höjdmodell ----------
+const LST_DEM = 'https://ext-geodata-raster.lansstyrelsen.se/arcgis/rest/services/RasterNationellt/lst_hojddata_1m/ImageServer/getSamples';
+let LST_MODE = null; // 'fetch' eller 'jsonp', avgörs vid första lyckade anropet
+async function lstGet(url, timeout) {
+  if (LST_MODE !== 'jsonp') {
+    try { const r = await getJSON(url, timeout); if (r && r.error) throw Object.assign(new Error(r.error.message || 'fel från tjänsten'), { server: true }); LST_MODE = 'fetch'; return r; }
+    catch (e) { if (LST_MODE === 'fetch' || e.server) throw e; }
+  }
+  const r = await jsonp(url, timeout); LST_MODE = 'jsonp'; return r;
+}
+async function elevLst(b, ds, onProg) {
+  const nx = Math.round((b.maxE - b.minE) / ds) + 1, ny = Math.round((b.maxN - b.minN) / ds) + 1;
+  const z = new Float32Array(nx * ny).fill(NaN), got = new Uint8Array(nx * ny);
+  const C = 30, jobs = [];
+  for (let j0 = 0; j0 < ny; j0 += C) for (let i0 = 0; i0 < nx; i0 += C) jobs.push([i0, j0, Math.min(C, nx - i0), Math.min(C, ny - j0)]);
+  let done = 0, failed = 0, okN = 0, abort = false, lastErr = '';
+  const one = async ([i0, j0, cw, ch]) => {
+    if (abort || FETCH.cancel) return;
+    const x0 = b.minE + (i0 - 0.5) * ds, y0 = b.minN + (j0 - 0.5) * ds;
+    const url = `${LST_DEM}?geometry=${x0.toFixed(1)},${y0.toFixed(1)},${(x0 + cw * ds).toFixed(1)},${(y0 + ch * ds).toFixed(1)}&geometryType=esriGeometryEnvelope&sampleCount=${cw * ch}&pixelSize=${ds},${ds}&returnFirstValueOnly=true&f=json`;
+    for (let a = 0; ; a++) {
+      try {
+        const r = await lstGet(url, 20000);
+        (r.samples || []).forEach(sm => {
+          const i = Math.round((sm.location.x - b.minE) / ds), j = Math.round((sm.location.y - b.minN) / ds);
+          if (i < 0 || j < 0 || i >= nx || j >= ny) return;
+          const v = parseFloat(sm.value), k = j * nx + i; got[k] = 1;
+          z[k] = isFinite(v) && v > -50 && v < 2500 ? v : 0; // NoData = hav
+        });
+        okN++; break;
+      } catch (e) { lastErr = e.message; if (a >= 1 || okN === 0 || FETCH.cancel) { failed++; break; } await sleep(800); }
+    }
+    if ((failed >= 3 && okN === 0) || failed > jobs.length * 0.3) abort = true;
+    done++; onProg && onProg(done, jobs.length);
+  };
+  const q = jobs.slice(); await Promise.all(Array.from({ length: 6 }, async () => { while (q.length && !abort) await one(q.shift()); }));
+  checkCancel();
+  if (abort) throw new Error(`tjänsten svarar inte (${lastErr || 'okänt fel'})`);
+  for (let pass = 0; pass < 6; pass++) {
+    let left = 0;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i; if (isFinite(z[k])) continue;
+      let s = 0, c = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue; const v = z[jj * nx + ii]; if (isFinite(v)) { s += v; c++; } }
+      if (c >= 2) z[k] = s / c; else left++;
+    }
+    if (!left) break;
+  }
+  const nGot = got.reduce((a, v) => a + v, 0);
+  if (nGot < 0.7 * nx * ny) throw new Error(`för få värden (${Math.round(nGot / (nx * ny) * 100)} %)`);
+  return { x0: b.minE, y0: b.minN, ds, nx, ny, z, src: 'Lantmäteriets höjdmodell (laserskanning)' };
+}
+async function elevTerrarium(b, ds) {
+  const nx = Math.round((b.maxE - b.minE) / ds) + 1, ny = Math.round((b.maxN - b.minN) / ds) + 1;
+  const Z = 13, n = 2 ** Z, tiles = new Map(), pos = [];
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const [lat, lon] = GK.toGeo(b.minE + i * ds, b.minN + j * ds);
+    const fx = (lon + 180) / 360 * n, r = lat * D2R, fy = (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n;
+    const tx = Math.floor(fx), ty = Math.floor(fy), key = tx + '/' + ty;
+    if (!tiles.has(key)) tiles.set(key, null);
+    pos.push({ key, px: Math.min(255, Math.floor((fx - tx) * 256)), py: Math.min(255, Math.floor((fy - ty) * 256)) });
+  }
+  const load = (key) => loadTerrTile(Z, key);
+  for (const key of tiles.keys()) tiles.set(key, await load(key));
+  const z = Float32Array.from(pos, p => { const d = tiles.get(p.key), i = (p.py * 256 + p.px) * 4; return Math.max(0, d[i] * 256 + d[i + 1] + d[i + 2] / 256 - 32768); });
+  return { x0: b.minE, y0: b.minN, ds, nx, ny, z, src: 'AWS Terrain Tiles (grov reservkälla)' };
+}
+function loadTerrTile(Z, key) {
+  return new Promise((res, rej) => {
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    const t = setTimeout(() => rej(new Error('tidsgräns')), 30000);
+    img.onload = () => { clearTimeout(t); try { const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0); res(x.getImageData(0, 0, 256, 256).data); } catch (e) { rej(e); } };
+    img.onerror = () => { clearTimeout(t); rej(new Error('platta saknas')); };
+    img.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${Z}/${key}.png`;
+  });
+}
+// Copernicus DEM via Open-Meteo (ca 90 m, CORS öppet) – sista reserv
+async function elevOpenMeteo(b, ds, onProg) {
+  const nx = Math.round((b.maxE - b.minE) / ds) + 1, ny = Math.round((b.maxN - b.minN) / ds) + 1, pts = [];
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) pts.push(GK.toGeo(b.minE + i * ds, b.minN + j * ds));
+  const z = new Float32Array(pts.length).fill(NaN);
+  for (let k = 0; k < pts.length; k += 100) {
+    checkCancel();
+    const sl = pts.slice(k, k + 100);
+    const url = `https://api.open-meteo.com/v1/elevation?latitude=${sl.map(q => q[0].toFixed(5)).join(',')}&longitude=${sl.map(q => q[1].toFixed(5)).join(',')}`;
+    for (let a = 0; ; a++) { try { const r = await getJSON(url, 20000); (r.elevation || []).forEach((v, i) => z[k + i] = Math.max(0, v)); break; } catch (e) { if (a >= 2) throw e; await sleep(3000); } }
+    onProg && onProg(Math.min(pts.length, k + 100), pts.length);
+    if (k + 100 < pts.length) await sleep(1100);
+  }
+  return { x0: b.minE, y0: b.minN, ds, nx, ny, z, src: 'Copernicus DEM via Open-Meteo (grov reservkälla, ca 90 m)' };
+}
+function demAt(d, E, N) {
+  if (!d) return NaN;
+  const fx = clamp((E - d.x0) / d.ds, 0, d.nx - 1.001), fy = clamp((N - d.y0) / d.ds, 0, d.ny - 1.001);
+  const i = Math.floor(fx), j = Math.floor(fy), tx = fx - i, ty = fy - j, k = j * d.nx + i, z = d.z;
+  return z[k] * (1 - tx) * (1 - ty) + z[k + 1] * tx * (1 - ty) + z[k + d.nx] * (1 - tx) * ty + z[k + d.nx + 1] * tx * ty;
+}
+
+// ---------- SGU strandförskjutningsmodell ----------
+// Samma metod som i potentialmodellen: UTFGrid per tidssteg, vart tusende år och sedan hundraårssteg,
+// så att varje ruta får året då den senast var hav (= blev land).
+const SGU_STRAND = 'https://api.sgu.se/oppnadata/strandforskjutningsmodell/';
+const strandLayer = (bp) => bp < 1000 ? 'bp1-900' : bp >= 13000 ? 'bp13000-13500' : `bp${Math.floor(bp / 1000) * 1000}-${Math.floor(bp / 1000) * 1000 + 900}`;
+function utfDecode(ch) { let c = ch.charCodeAt(0); if (c >= 93) c--; if (c >= 35) c--; return c - 32; }
+async function fetchStrand(b, onProg) {
+  const W = b.maxE - b.minE, H = b.maxN - b.minN;
+  const gs = Math.max(25, Math.ceil(Math.max(W, H) / 150)), nx = Math.ceil(W / gs), ny = Math.ceil(H / gs), N = nx * ny;
+  const bbox = [b.minE, b.minN, b.minE + nx * gs, b.minN + ny * gs].map(v => Math.round(v)).join(',');
+  const cache = new Map(); let done = 0, fails = 0;
+  const step = async (bp) => {
+    if (cache.has(bp)) return cache.get(bp);
+    const lay = strandLayer(bp), year = 1950 - bp;
+    const url = `${SGU_STRAND}${lay}/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${lay}&STYLES=&SRS=EPSG:3006&BBOX=${bbox}&WIDTH=${nx * 4}&HEIGHT=${ny * 4}&FORMAT=${encodeURIComponent('application/json;type=utfgrid')}&CQL_FILTER=${encodeURIComponent('year=' + year)}`;
+    checkCancel();
+    let r;
+    for (let a = 0; ; a++) { try { r = await getJSON(url, 30000); break; } catch (e) { checkCancel(); if (++fails >= 4 || a >= 1) throw new Error(`${e.message} (steg ${fmt(bp)} BP)`); await sleep(1000); } }
+    const water = new Uint8Array(N), rows = r.grid || [], gh = rows.length;
+    for (let gj = 0; gj < gh; gj++) {
+      const row = rows[gj], j = Math.floor((gh - 1 - gj) * ny / gh);
+      for (let gi = 0; gi < row.length; gi++) {
+        const key = r.keys[utfDecode(row[gi])]; if (!key) continue;
+        const d = r.data && r.data[key]; if (!d) continue;
+        if (d.code === 1 || d.code === 2) water[j * nx + Math.floor(gi * nx / row.length)] = 1;
+      }
+    }
+    done++; onProg && onProg(done);
+    const res = { water }; cache.set(bp, res); return res;
+  };
+  const pool = async (bps) => { const out = []; for (let i = 0; i < bps.length; i += 6) out.push(...await Promise.all(bps.slice(i, i + 6).map(step))); return out; };
+  const coarse = []; for (let bp = 1000; bp <= 13000; bp += 1000) coarse.push(bp);
+  const cm = await pool(coarse);
+  const lastWater = new Int32Array(N).fill(-1);
+  for (let k = 0; k < N; k++) for (let c = 0; c < coarse.length; c++) if (cm[c].water[k]) { lastWater[k] = coarse[c]; break; }
+  const mill = new Set(); for (let k = 0; k < N; k++) if (lastWater[k] > 0) mill.add(lastWater[k]);
+  const fine = []; mill.forEach(m => { for (let bp = m - 900; bp < m; bp += 100) fine.push(bp < 100 ? 100 : bp); });
+  await pool([...new Set(fine)].sort((a, b) => a - b));
+  const emerge = new Float32Array(N).fill(NaN);
+  for (let k = 0; k < N; k++) {
+    const m = lastWater[k]; if (m < 0) continue;
+    let last = m;
+    for (let bp = Math.max(100, m - 900); bp < m; bp += 100) { const s = cache.get(bp); if (s && s.water[k]) { last = bp; break; } }
+    emerge[k] = 1950 - (last - 50);
+  }
+  return { x0: b.minE, y0: b.minN, gs, nx, ny, emerge, steps: cache.size };
+}
+function emergeAt(E, N) {
+  const st = S.strand;
+  if (st) { const i = Math.floor((E - st.x0) / st.gs), j = Math.floor((N - st.y0) / st.gs); if (i >= 0 && j >= 0 && i < st.nx && j < st.ny) { const v = st.emerge[j * st.nx + i]; return isFinite(v) ? { y: v, src: 'SGU' } : { y: null, src: 'SGU', above: true }; } }
+  // utan SGU-rutnät: läs av kurvan baklänges
+  const z = demAt(S.dem, E, N); const c = S.curve; if (!c || !isFinite(z)) return null;
+  const p = c.pts; if (!p.length) return null;
+  if (z >= p[0][1]) return { y: null, above: true, src: 'kurva' };
+  for (let i = 0; i < p.length - 1; i++) if (z <= p[i][1] && z >= p[i + 1][1]) { const t = (p[i][1] - z) / Math.max(1e-6, p[i][1] - p[i + 1][1]); return { y: p[i][0] + t * (p[i + 1][0] - p[i][0]), src: 'kurva' }; }
+  return null;
+}
+
+// Strandförskjutningskurva för området: rutor som blev land ett visst århundrade ligger i median på dåtidens strandnivå.
+function buildCurve(st, dem) {
+  if (!st || !dem) return null;
+  const bins = new Map(), above = []; let n = 0;
+  for (let j = 0; j < st.ny; j++) for (let i = 0; i < st.nx; i++) {
+    const k = j * st.nx + i, E = st.x0 + (i + 0.5) * st.gs, N = st.y0 + (j + 0.5) * st.gs;
+    const z = demAt(dem, E, N); if (!isFinite(z)) continue;
+    const em = st.emerge[k];
+    if (isFinite(em)) { const b = Math.round(em / 100) * 100; if (!bins.has(b)) bins.set(b, []); bins.get(b).push(z); n++; } else above.push(z);
+  }
+  const pts = [...bins.entries()].filter(([, a]) => a.length >= 2 || bins.size < 5).map(([b, a]) => [b, median(a), a.length]).sort((p, q) => p[0] - q[0]);
+  for (let i = pts.length - 2; i >= 0; i--) pts[i][1] = Math.max(pts[i][1], pts[i + 1][1]); // äldre strand ligger aldrig lägre än yngre
+  const cap = above.length > 0.03 * (n + above.length) ? quantile(above, 0.1) : null;
+  return { pts, cap, nCells: n, above: above.length };
+}
+function shoreAt(Y) {
+  if (S.manualL != null) return { L: S.manualL, note: 'egen nivå' };
+  const c = S.curve; if (!c || !c.pts.length) return null;
+  const p = c.pts, n = p.length;
+  const slope = (a, b) => { const s = (p[b][1] - p[a][1]) / Math.max(1, p[b][0] - p[a][0]); return Math.min(s, -0.002); };
+  if (n === 1) { const L = p[0][1] + -0.005 * (Y - p[0][0]); return { L: c.cap != null ? Math.min(L, c.cap) : L, note: 'uppskattad' }; }
+  if (Y <= p[0][0]) { let L = p[0][1] + slope(0, Math.min(n - 1, 4)) * (Y - p[0][0]); if (c.cap != null) L = Math.min(L, Math.max(c.cap, p[0][1])); return { L, note: Y < p[0][0] - 150 ? 'utanför modellens spann i området' : '' }; }
+  if (Y >= p[n - 1][0]) { const L = p[n - 1][1] + slope(Math.max(0, n - 5), n - 1) * (Y - p[n - 1][0]); return { L, note: Y > p[n - 1][0] + 150 ? 'havet låg utanför området' : '' }; }
+  for (let i = 0; i < n - 1; i++) if (Y >= p[i][0] && Y <= p[i + 1][0]) { const t = (Y - p[i][0]) / (p[i + 1][0] - p[i][0]); return { L: p[i][1] + t * (p[i + 1][1] - p[i][1]), note: '' }; }
+  return null;
+}
+
+// =====================================================================
+// Import av GeoJSON
+// =====================================================================
+function normGeom(geom) {
+  const out = { pts: [], lines: [], polys: [] };
+  const cv = (c) => Math.abs(c[0]) > 1000 ? [c[0], c[1]] : GK.toGrid(c[1], c[0]);
+  const add = (g) => {
+    if (!g || !g.coordinates && g.type !== 'GeometryCollection') return;
+    switch (g.type) {
+      case 'Point': out.pts.push(cv(g.coordinates)); break;
+      case 'MultiPoint': g.coordinates.forEach(c => out.pts.push(cv(c))); break;
+      case 'LineString': out.lines.push(g.coordinates.map(cv)); break;
+      case 'MultiLineString': g.coordinates.forEach(l => out.lines.push(l.map(cv))); break;
+      case 'Polygon': out.polys.push(g.coordinates.map(r => r.map(cv))); break;
+      case 'MultiPolygon': g.coordinates.forEach(pl => out.polys.push(pl.map(r => r.map(cv)))); break;
+      case 'GeometryCollection': (g.geometries || []).forEach(add); break;
+    }
+  };
+  add(geom);
+  return out.pts.length || out.lines.length || out.polys.length ? out : null;
+}
+function ringArea(r) { let a = 0; for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][0] * r[i][1] - r[i][0] * r[j][1]); return a / 2; }
+function inRing(x, y, r) { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const a = r[i], b = r[j]; if (((a[1] > y) !== (b[1] > y)) && (x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0])) c = !c; } return c; }
+function repPoint(g) {
+  if (g.pts.length) return g.pts[0];
+  if (g.polys.length) {
+    let best = null, ba = -1; g.polys.forEach(p => { const a = Math.abs(ringArea(p[0])); if (a > ba) { ba = a; best = p[0]; } });
+    let cx = 0, cy = 0, A = 0; for (let i = 0, j = best.length - 1; i < best.length; j = i++) { const f = best[j][0] * best[i][1] - best[i][0] * best[j][1]; A += f; cx += (best[j][0] + best[i][0]) * f; cy += (best[j][1] + best[i][1]) * f; }
+    if (Math.abs(A) > 1e-6) { cx /= 3 * A; cy /= 3 * A; if (inRing(cx, cy, best)) return [cx, cy]; }
+    return best[0];
+  }
+  if (g.lines.length) { const l = g.lines[0]; return l[Math.floor(l.length / 2)]; }
+  return null;
+}
+function labelOf(p) { for (const k of ['namn', 'name', 'NAMN', 'Namn', 'typ', 'type', 'TYP', 'beskrivning', 'id', 'ID']) if (p[k] != null && String(p[k]).trim()) return String(p[k]); return 'Objekt'; }
+function ingest(name, gj) {
+  const fs = gj && gj.type === 'FeatureCollection' ? gj.features || [] : gj && gj.type === 'Feature' ? [gj] : [];
+  const c = { zones: 0, classes: 0, study: 0, lamn: 0, egen: 0 };
+  fs.forEach(f => {
+    if (!f || !f.geometry) return;
+    const p = f.properties || {}, g = normGeom(f.geometry); if (!g) return;
+    const it = { p, g };
+    if (p.lager === 'hotspot_zon') { S.feats.zones.push(it); c.zones++; }
+    else if (p.lager === 'potentialklass') { S.feats.classes.push(it); c.classes++; }
+    else if (p.lager === 'utredningsomrade') { S.feats.study.push(it); c.study++; }
+    else if ('lamningstyp' in p || 'lamningsnummer' in p || 'raa_nummer' in p || 'antikvariskbedomning' in p) { S.feats.lamn.push(it); c.lamn++; }
+    else { S.feats.egen.push(it); c.egen++; }
+  });
+  const parts = [];
+  if (c.zones) parts.push(`${c.zones} zoner`); if (c.classes) parts.push(`${c.classes} potentialklasser`); if (c.study) parts.push('utredningsområde');
+  if (c.lamn) parts.push(`${fmt(c.lamn)} lämningar`); if (c.egen) parts.push(`${fmt(c.egen)} objekt`);
+  S.files.push({ name, txt: parts.join(', ') || 'inga objekt' });
+  return c;
+}
+function featBBox(list) {
+  let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+  const eat = (q) => { a = Math.min(a, q[0]); b = Math.min(b, q[1]); c = Math.max(c, q[0]); d = Math.max(d, q[1]); };
+  list.forEach(it => { it.g.pts.forEach(eat); it.g.lines.forEach(l => l.forEach(eat)); it.g.polys.forEach(p => p[0].forEach(eat)); });
+  return isFinite(a) ? { minE: a, minN: b, maxE: c, maxN: d } : null;
+}
+
+// =====================================================================
+// Startsidan
+// =====================================================================
+function setArea(E0, N0, R, src) {
+  S.area = { E0: Math.round(E0), N0: Math.round(N0), R, src };
+  if (S.dem && (Math.abs(S.dem.x0 + R - S.area.E0) > 1 || Math.abs(S.dem.y0 + R - S.area.N0) > 1 || S.dem.nx * S.dem.ds < 2 * R - 1)) { S.dem = null; S.strand = null; S.curve = null; statList.length = 0; renderStat(); }
+  S.demo = false;
+  renderSetup();
+}
+const bboxOf = (a) => ({ minE: a.E0 - a.R, maxE: a.E0 + a.R, minN: a.N0 - a.R, maxN: a.N0 + a.R });
+const statList = [];
+function stat(id, cls, title, txt, t0) { let s = statList.find(x => x.id === id); if (!s) { s = { id }; statList.push(s); } Object.assign(s, { cls, title, txt, t0: cls === 'pending' ? (t0 || s.t0 || Date.now()) : null }); renderStat(); }
+function renderStat() { $('statList').innerHTML = statList.map(s => `<li class="${s.cls}"><i></i><div><b>${esc(s.title)}</b><span>${esc(s.txt)}${s.cls === 'pending' && s.t0 ? ` · ${Math.round((Date.now() - s.t0) / 1000)} s` : ''}</span></div></li>`).join(''); }
+function renderSetup() {
+  document.querySelectorAll('#segR button').forEach(b => b.classList.toggle('on', +b.dataset.r === (S.area ? S.area.R : radius)));
+  const a = S.area, at = $('areaTxt');
+  if (a) { at.classList.remove('empty'); at.textContent = `N ${fmt(a.N0)} · E ${fmt(a.E0)} · radie ${fmt(a.R)} m${a.src ? ' · ' + a.src : ''}`; }
+  else { at.classList.add('empty'); at.textContent = 'Inget område valt'; }
+  $('bFromFile').disabled = !(S.feats.study.length || S.feats.zones.length || S.feats.classes.length || S.feats.lamn.length);
+  $('fileList').innerHTML = S.files.map(f => `<li><span>${esc(f.name)}</span><span>${esc(f.txt)}</span></li>`).join('');
+  $('bClearFiles').hidden = !S.files.length;
+  $('bFetch').disabled = !a && !FETCH.on;
+  $('bFetch').textContent = FETCH.on ? (FETCH.cancel ? 'Avbryter…' : 'Avbryt hämtningen') : !a ? 'Välj ett område först' : S.dem && !S.demo ? 'Hämta igen' : 'Hämta för området';
+  const ready = !!S.dem && !FETCH.on;
+  $('bAR').disabled = !ready; $('bDesk').disabled = !ready;
+  renderCurve();
+  $('savedBox').hidden = !S.savedAt || S.demo;
+  if (S.savedAt) $('savedTxt').textContent = `Sparat på telefonen ${S.savedAt}: terräng${S.curve ? ', strandkurva' : ''}${S.files.length ? ' och ' + S.files.length + ' fil' + (S.files.length > 1 ? 'er' : '') : ''}. Fungerar utan nät.`;
+}
+function renderCurve() {
+  const c = S.curve, box = $('curveBox');
+  if (!c || !c.pts.length) { box.hidden = true; return; }
+  box.hidden = false;
+  const W = 320, H = 156, ml = 36, mr = 10, mt = 10, mb = 26;
+  const p = c.pts, x0 = Math.min(Math.floor((p[0][0] - 400) / 1000) * 1000, -1000), x1 = 1900;
+  const yMax = Math.max(5, Math.ceil(Math.max(...p.map(q => q[1])) / 10) * 10), yMin = Math.min(0, Math.floor(Math.min(...p.map(q => q[1]))));
+  const X = (x) => ml + (x - x0) / (x1 - x0) * (W - ml - mr), Y = (y) => mt + (1 - (y - yMin) / (yMax - yMin)) * (H - mt - mb);
+  const span = x1 - x0, stepX = span > 8000 ? 3000 : span > 5000 ? 2000 : 1000;
+  let g = '';
+  const yStep = yMax - yMin > 60 ? 20 : yMax - yMin > 25 ? 10 : 5;
+  for (let y = Math.ceil(yMin / yStep) * yStep; y <= yMax; y += yStep) g += `<line x1="${ml}" x2="${W - mr}" y1="${Y(y)}" y2="${Y(y)}" stroke="rgba(224,240,232,.1)"/><text x="${ml - 5}" y="${Y(y) + 3.5}" text-anchor="end" fill="#80908a" font-size="10" font-family="IBM Plex Mono,monospace">${y}</text>`;
+  for (let x = Math.ceil(x0 / stepX) * stepX; x <= x1; x += stepX) g += `<line x1="${X(x)}" x2="${X(x)}" y1="${H - mb}" y2="${H - mb + 4}" stroke="#80908a"/><text x="${X(x)}" y="${H - mb + 15}" text-anchor="middle" fill="#80908a" font-size="10" font-family="IBM Plex Mono,monospace">${x < 0 ? -x + ' f.Kr.' : x === 0 ? 'Kr.f.' : x + ' e.Kr.'}</text>`;
+  const line = p.map(q => `${X(q[0]).toFixed(1)},${Y(q[1]).toFixed(1)}`).join(' ');
+  const area = `${X(p[0][0]).toFixed(1)},${Y(yMin)} ${line} ${X(p[p.length - 1][0]).toFixed(1)},${Y(yMin)}`;
+  const cur = shoreAt(S.year);
+  const mark = cur && S.year >= x0 ? `<line x1="${X(S.year)}" x2="${X(S.year)}" y1="${mt}" y2="${H - mb}" stroke="#fff0c9" stroke-dasharray="3 3" opacity=".7"/><circle cx="${X(S.year)}" cy="${Y(clamp(cur.L, yMin, yMax))}" r="4" fill="#fff0c9"/>` : '';
+  $('curveSvg').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Strandförskjutningskurva"><text x="${ml}" y="${mt - 1}" fill="#80908a" font-size="9.5" font-family="IBM Plex Mono,monospace">m ö.h.</text>${g}<polygon points="${area}" fill="rgba(87,169,232,.18)"/><polyline points="${line}" fill="none" stroke="#57a9e8" stroke-width="2" stroke-linejoin="round"/>${mark}</svg>`;
+  $('curveCap').textContent = `Strandlinjens höjd i området enligt SGU:s modell och höjdmodellen (${fmt(c.nCells)} rutor, median per århundrade).${c.cap != null ? ` Högsta kustlinjen ca ${fmt(c.cap)} m ö.h.` : ''}`;
+}
+async function fetchAll() {
+  if (!S.area) return;
+  const b = bboxOf(S.area), R = S.area.R, ds = R <= 600 ? 5 : R <= 1000 ? 10 : 15;
+  FETCH.cancel = false; FETCH.on = true; renderSetup();
+  statList.length = 0; S.demo = false; S.dem = null; S.strand = null; S.curve = null;
+  const t0 = Date.now(); const tick = setInterval(renderStat, 1000);
+  stat('dem', 'pending', 'Höjdmodell', 'Hämtar Lantmäteriets höjdmodell…', t0);
+  stat('strand', 'pending', 'Strandförskjutning', 'Hämtar SGU:s strandförskjutningsmodell…', t0);
+  const demJob = (async () => {
+    try { return await elevLst(b, ds, (d, n) => stat('dem', 'pending', 'Höjdmodell', `Hämtar Lantmäteriets höjdmodell… ${d} av ${n} delar`, t0)); }
+    catch (e) {
+      if (FETCH.cancel) throw e;
+      stat('dem', 'pending', 'Höjdmodell', `Lantmäteriet: ${e.message}. Provar grövre reservkälla…`, t0);
+      try { return await elevTerrarium(b, Math.max(ds, 20)); }
+      catch (e2) {
+        if (FETCH.cancel) throw e2;
+        stat('dem', 'pending', 'Höjdmodell', `Lantmäteriet och AWS svarade inte. Provar Open-Meteo…`, t0);
+        try { return await elevOpenMeteo(b, Math.max(ds, 50), (d, n) => stat('dem', 'pending', 'Höjdmodell', `Open-Meteo… ${d} av ${n} punkter`, t0)); }
+        catch (e3) { throw new Error(`Lantmäteriet: ${e.message}; AWS: ${e2.message}; Open-Meteo: ${e3.message}`); }
+      }
+    }
+  })();
+  demJob.then(d => { if (FETCH.on && !FETCH.cancel) stat('dem', 'ok', 'Höjdmodell', `${d.src} · rutnät ${d.ds} m · klar`); }).catch(() => { });
+  const sguJob = fetchStrand(b, (d) => stat('strand', 'pending', 'Strandförskjutning', `Hämtar SGU:s modell… ${d} tidssteg klara`, t0));
+  const [rd, rs] = await Promise.allSettled([demJob, sguJob]);
+  clearInterval(tick);
+  const cancelled = FETCH.cancel; FETCH.on = false; FETCH.cancel = false;
+  if (rd.status === 'fulfilled') {
+    S.dem = rd.value; let mn = Infinity, mx = -Infinity; S.dem.z.forEach(v => { mn = Math.min(mn, v); mx = Math.max(mx, v); });
+    stat('dem', 'ok', 'Höjdmodell', `${S.dem.src} · rutnät ${S.dem.ds} m · ${fmt(mn)}–${fmt(mx)} m ö.h.`);
+  } else stat('dem', 'err', 'Höjdmodell', cancelled ? 'Avbruten.' : `Gick inte att hämta (${rd.reason && rd.reason.message}). Kontrollera nätet och försök igen.`);
+  if (rs.status === 'fulfilled' && S.dem) {
+    S.strand = rs.value; S.curve = buildCurve(S.strand, S.dem);
+    if (S.curve && S.curve.pts.length) { const p = S.curve.pts; stat('strand', 'ok', 'Strandförskjutning', `Blev land ${fmtYear(p[0][0])}–${fmtYear(p[p.length - 1][0])} · ${S.strand.steps} tidssteg`); }
+    else stat('strand', 'ok', 'Strandförskjutning', 'Området ligger ovanför högsta kustlinjen. Inget forntida hav att visa. Du kan ange en egen vattennivå i kameravyn.');
+  } else if (rs.status === 'fulfilled') { S.strand = rs.value; stat('strand', 'ok', 'Strandförskjutning', 'Hämtad, men kurvan kräver höjdmodellen.'); }
+  else stat('strand', 'err', 'Strandförskjutning', cancelled ? 'Avbruten. Du kan ange havsnivån själv under Kalibrera.' : `SGU svarade inte (${rs.reason && rs.reason.message}). Du kan ange havsnivån själv under Kalibrera i kameravyn.`);
+  S.manualL = null;
+  if (S.dem) await saveArea();
+  renderSetup();
+  if (!cancelled && (rd.status !== 'fulfilled' || rs.status !== 'fulfilled' || !S.dem.src.startsWith('Lantm'))) diagnose();
+}
+async function diagnose() {
+  const a = S.area || { E0: 650000, N0: 6600000 }, E = a.E0, N = a.N0, [lat, lon] = GK.toGeo(E, N);
+  const el = $('diagList'); el.hidden = false;
+  const tests = [
+    ['Lantmäteriets höjdmodell (direkt)', () => getJSON(`${LST_DEM}?geometry=${E},${N}&geometryType=esriGeometryPoint&returnFirstValueOnly=true&f=json`, 15000).then(r => { if (r.error) throw new Error(r.error.message); return `${fmt(parseFloat(r.samples[0].value), 1)} m ö.h. vid områdets mitt`; })],
+    ['Lantmäteriets höjdmodell (JSONP)', () => jsonp(`${LST_DEM}?geometry=${E},${N}&geometryType=esriGeometryPoint&returnFirstValueOnly=true&f=json`, 15000).then(r => `${fmt(parseFloat(r.samples[0].value), 1)} m ö.h.`)],
+    ['SGU strandförskjutning', () => getJSON(`${SGU_STRAND}bp5000-5900/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=bp5000-5900&STYLES=&SRS=EPSG:3006&BBOX=${E - 200},${N - 200},${E + 200},${N + 200}&WIDTH=16&HEIGHT=16&FORMAT=${encodeURIComponent('application/json;type=utfgrid')}&CQL_FILTER=${encodeURIComponent('year=-3050')}`, 20000).then(r => { if (!r.grid) throw new Error('oväntat svar'); return 'svarar'; })],
+    ['AWS höjdplattor (reserv)', () => { const n = 2 ** 13, fx = Math.floor((lon + 180) / 360 * n), r = lat * D2R, fy = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return loadTerrTile(13, fx + '/' + fy).then(() => 'svarar'); }],
+    ['Open-Meteo höjd (reserv)', () => getJSON(`https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(5)}&longitude=${lon.toFixed(5)}`, 15000).then(r => `${fmt(r.elevation[0], 0)} m ö.h.`)],
+  ];
+  el.innerHTML = tests.map(t => `<li class="pending"><i></i><div><b>${esc(t[0])}</b><span>Testar…</span></div></li>`).join('');
+  $('bDiag').disabled = true;
+  await Promise.all(tests.map(async (t, i) => {
+    let cls, txt; try { txt = await t[1](); cls = 'ok'; } catch (e) { cls = 'err'; txt = e.message || 'fel'; }
+    const li = el.children[i]; li.className = cls; li.querySelector('span').textContent = cls === 'ok' ? txt : 'Fungerar inte: ' + txt;
+  }));
+  $('bDiag').disabled = false;
+  const bad = [...el.children].filter(li => li.className === 'err').length;
+  if (bad) toast(`${bad} av ${tests.length} tjänster svarar inte härifrån. Se listan under Hämta.`, true);
+}
+async function saveArea() {
+  S.savedAt = new Date().toLocaleString('sv-SE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const ok = await IDB.put('last', { area: S.area, dem: S.dem, strand: S.strand, feats: S.feats, files: S.files, savedAt: S.savedAt, stat: statList.slice() });
+  if (!ok) S.savedAt = null;
+}
+async function saveFiles() { if (S.demo) return; const d = await IDB.get('last'); if (d) { d.feats = S.feats; d.files = S.files; await IDB.put('last', d); } }
+async function restore() {
+  const d = await IDB.get('last'); if (!d || !d.area) return;
+  S.area = d.area; S.dem = d.dem || null; S.strand = d.strand || null; S.feats = Object.assign({ zones: [], classes: [], study: [], lamn: [], egen: [] }, d.feats || {}); S.files = d.files || [];
+  S.curve = buildCurve(S.strand, S.dem); S.savedAt = d.savedAt; radius = S.area.R;
+  (d.stat || []).forEach(s => statList.push(s)); renderStat();
+  renderSetup();
+}
+
+// ---------- Exempeldata (påhittad terräng) ----------
+function loadDemo() {
+  const E0 = 652400, N0 = 6632600, R = 800, ds = 10, nx = 2 * R / ds + 1, ny = nx, z = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const x = i * ds - R, y = j * ds - R;
+    const ridge = 22 * Math.exp(-((x * 0.62 + y * 0.78 - 60) ** 2) / (2 * 120 ** 2));
+    const knoll = 12 * Math.exp(-((x + 330) ** 2 + (y - 320) ** 2) / (2 * 110 ** 2));
+    z[j * nx + i] = Math.max(0, 6 + 0.02 * (x + R) + ridge + knoll + 2.5 * Math.sin(x / 70) * Math.cos(y / 95));
+  }
+  S.area = { E0, N0, R, src: 'exempel' };
+  S.dem = { x0: E0 - R, y0: N0 - R, ds, nx, ny, z, src: 'Exempel – påhittad terräng' };
+  S.strand = null;
+  const pts = []; for (let y = -7000; y <= 1900; y += 100) pts.push([y, 64 * Math.pow((1900 - y) / 8900, 1.18)]);
+  S.curve = { pts, cap: null, nCells: 0, above: 0 };
+  const P = (dx, dy) => [E0 + dx, N0 + dy];
+  const poly = (cx, cy, rx, ry, rot) => { const r = []; for (let a = 0; a < 24; a++) { const t = a / 24 * Math.PI * 2, w = 1 + 0.15 * Math.sin(3 * t); const x = Math.cos(t) * rx * w, y = Math.sin(t) * ry * w; r.push(P(cx + x * Math.cos(rot) - y * Math.sin(rot), cy + x * Math.sin(rot) + y * Math.cos(rot))); } r.push(r[0]); return [r]; };
+  S.feats = { zones: [], classes: [], study: [], lamn: [], egen: [] };
+  S.feats.study.push({ p: { lager: 'utredningsomrade', namn: 'Exempelområde' }, g: { pts: [], lines: [], polys: [[[P(-520, -480), P(540, -480), P(540, 520), P(-520, 520), P(-520, -480)]]] } });
+  S.feats.zones.push({ p: { lager: 'hotspot_zon', zon: 'A', klass: 'Hög', area_ha: 3.1, jordart: 'Isälvssediment', hojd_moh: 27, tolkning: 'Stenåldersboplats', motivering: 'Sandig åsrygg; gränszon mot lerslätt; sydvästläge' }, g: { pts: [], lines: [], polys: [poly(40, -30, 150, 55, 0.9)] } });
+  S.feats.zones.push({ p: { lager: 'hotspot_zon', zon: 'B', klass: 'Medelhög', area_ha: 2.2, jordart: 'Morän', hojd_moh: 24, tolkning: 'Brons-/järnåldersboplats', motivering: 'Moränkulle med svag lutning; nära forntida strand' }, g: { pts: [], lines: [], polys: [poly(-330, 320, 110, 80, 0.2)] } });
+  S.feats.classes.push({ p: { lager: 'potentialklass', klass: 'Medelhög potential', kod: 2 }, g: { pts: [], lines: [], polys: [poly(-60, 40, 320, 150, 0.9)] } });
+  S.feats.classes.push({ p: { lager: 'potentialklass', klass: 'Hög potential', kod: 3 }, g: { pts: [], lines: [], polys: [poly(40, -30, 150, 55, 0.9)] } });
+  const L = (dx, dy, typ, nr, bed) => S.feats.lamn.push({ p: { lamningstyp: typ, lamningsnummer: nr, antikvariskbedomning: bed }, g: { pts: [P(dx, dy)], lines: [], polys: [] } });
+  L(60, 30, 'Stensättning', 'L0000:1001', 'Fornlämning'); L(10, 70, 'Stensättning', 'L0000:1002', 'Fornlämning'); L(-120, -140, 'Boplats', 'L0000:1003', 'Fornlämning');
+  L(-300, 350, 'Skärvstenshög', 'L0000:1004', 'Fornlämning'); L(220, 150, 'Röjningsröse', 'L0000:1005', 'Övrig kulturhistorisk lämning'); L(-60, 260, 'Fyndplats', 'L0000:1006', 'Möjlig fornlämning');
+  S.files = [{ name: 'Exempeldata', txt: '2 zoner, 6 lämningar – påhittade' }];
+  S.demo = true; S.savedAt = null; S.manualL = null;
+  statList.length = 0; stat('dem', 'ok', 'Höjdmodell', 'Exempel – påhittad terräng, inte en riktig plats'); stat('strand', 'ok', 'Strandförskjutning', 'Exempelkurva, inte SGU-data');
+  renderSetup();
+}
+
+// =====================================================================
+// 3D-scen
+// =====================================================================
+let renderer, scene, camera, terrain, water, overlayTex, overlayCv, pinGroup;
+const PINS = [];
+const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 } };
+const TER_VS = `varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
+void main(){ vUv=uv; vH=position.y; vN=normal; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
+const TER_FS = `uniform sampler2D uOver; uniform float uL; uniform float uShore; uniform float uCont; uniform float uDesk; uniform float uR; uniform vec3 uCam; uniform float uHav;
+varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
+vec4 over(vec4 t, vec4 b){ float a=t.a+b.a*(1.0-t.a); vec3 c=(t.rgb*t.a+b.rgb*b.a*(1.0-t.a))/max(a,1e-4); return vec4(c,a); }
+void main(){
+  vec4 col=vec4(0.0);
+  float dist=distance(vW,uCam);
+  if(uDesk>0.5){ vec3 n=normalize(vN); if(n.y<0.0) n=-n; vec3 l=normalize(vec3(-0.5,0.55,0.45)); float sh=clamp(dot(n,l),0.0,1.0)*0.85+0.2; vec3 g=mix(vec3(0.36,0.45,0.31),vec3(0.62,0.60,0.47),smoothstep(0.0,60.0,vH))*sh; g=mix(g,vec3(0.76,0.81,0.82),smoothstep(250.0,1400.0,dist)*0.55); col=vec4(g,1.0); }
+  vec4 ov=texture2D(uOver,vUv); ov.a*=1.0-smoothstep(700.0,1400.0,dist)*0.6; col=over(ov,col);
+  if(uCont>0.0){ float f=vH/uCont; float w=fwidth(f); float ln=1.0-smoothstep(0.0,w*1.4,abs(fract(f+0.5)-0.5)); float fade=1.0-smoothstep(120.0,500.0,dist); col=over(vec4(1.0,1.0,1.0,0.55*ln*fade),col); }
+  if(uShore>0.5 && uHav>0.5){ float w=fwidth(vH); float s=1.0-smoothstep(max(w*1.2,0.06),max(w*3.0,0.3),abs(vH-uL)); col=over(vec4(1.0,0.94,0.79,0.95*s),col); }
+  float e=1.0-smoothstep(uR*0.9,uR,max(abs(vW.x),abs(vW.z)));
+  col.a*=e;
+  gl_FragColor=col;
+}`;
+const WAT_VS = `varying vec3 vW; void main(){ vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
+const WAT_FS = `uniform float uT; uniform vec3 uCam; uniform float uR; varying vec3 vW;
+void main(){
+  float d=distance(vW,uCam);
+  float rip=sin(vW.x*0.31+uT*1.2)*sin(vW.z*0.27-uT*0.9)*0.5+0.5;
+  float rip2=sin((vW.x+vW.z)*0.9+uT*2.1)*0.5+0.5;
+  vec3 deep=vec3(0.09,0.33,0.58), light=vec3(0.42,0.70,0.90);
+  vec3 c=mix(deep,light,rip*0.25+rip2*0.08+smoothstep(40.0,900.0,d)*0.45);
+  float edge=1.0-smoothstep(uR*0.86,uR*0.99,max(abs(vW.x),abs(vW.z)));
+  float a=mix(0.62,0.5,smoothstep(20.0,600.0,d))*edge;
+  gl_FragColor=vec4(c,a);
+}`;
+function initScene() {
+  init3();
+  if (!renderer) {
+    renderer = new THREE.WebGLRenderer({ canvas: $('gl'), alpha: true, antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0x000000, 0);
+    camera = new THREE.PerspectiveCamera(60, 1, 0.3, 8000);
+  }
+  scene = new THREE.Scene();
+  const d = S.dem, a = S.area, R = a.R;
+  U.uR.value = R;
+  // terräng (skriver djup så att havet döljs bakom höjder, och bär överlagret)
+  const g = new THREE.BufferGeometry(), nx = d.nx, ny = d.ny;
+  const pos = new Float32Array(nx * ny * 3), uv = new Float32Array(nx * ny * 2);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const k = j * nx + i;
+    pos[k * 3] = d.x0 + i * d.ds - a.E0; pos[k * 3 + 1] = d.z[k]; pos[k * 3 + 2] = -(d.y0 + j * d.ds - a.N0);
+    uv[k * 2] = i / (nx - 1); uv[k * 2 + 1] = j / (ny - 1);
+  }
+  const idx = new (nx * ny > 65535 ? Uint32Array : Uint16Array)((nx - 1) * (ny - 1) * 6); let n = 0;
+  for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) { const A = j * nx + i, B = A + 1, C = A + nx, D = C + 1; idx[n++] = A; idx[n++] = B; idx[n++] = C; idx[n++] = B; idx[n++] = D; idx[n++] = C; }
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1)); g.computeVertexNormals();
+  overlayCv = document.createElement('canvas'); overlayCv.width = overlayCv.height = 2048;
+  overlayTex = new THREE.CanvasTexture(overlayCv); overlayTex.anisotropy = renderer.capabilities.getMaxAnisotropy(); U.uOver.value = overlayTex;
+  const tm = new THREE.ShaderMaterial({ uniforms: U, vertexShader: TER_VS, fragmentShader: TER_FS, transparent: true, depthWrite: true, side: THREE.DoubleSide, extensions: { derivatives: true } });
+  terrain = new THREE.Mesh(g, tm); terrain.renderOrder = 0; scene.add(terrain);
+  // forntida hav: en plan yta i strandnivå, dold där marken ligger högre
+  const wg = new THREE.PlaneGeometry(2 * R, 2 * R, 1, 1); wg.rotateX(-Math.PI / 2);
+  water = new THREE.Mesh(wg, new THREE.ShaderMaterial({ uniforms: U, vertexShader: WAT_VS, fragmentShader: WAT_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+  water.renderOrder = 1; scene.add(water);
+  pinGroup = new THREE.Group(); scene.add(pinGroup);
+  buildPins(); drawOverlay(); buildMiniBase();
+}
+
+// ---------- Överlager på marken ----------
+function drawOverlay() {
+  const cv = overlayCv, x = cv.getContext('2d'), Sz = cv.width, a = S.area, R = a.R, k = Sz / (2 * R);
+  const minE = a.E0 - R, maxN = a.N0 + R, tx = (E) => (E - minE) * k, ty = (N) => (maxN - N) * k, m = (v) => Math.max(1.2, v * k);
+  x.clearRect(0, 0, Sz, Sz);
+  const path = (polys) => { x.beginPath(); polys.forEach(p => p.forEach(r => { r.forEach((q, i) => i ? x.lineTo(tx(q[0]), ty(q[1])) : x.moveTo(tx(q[0]), ty(q[1]))); x.closePath(); })); };
+  const lines = (ls) => { x.beginPath(); ls.forEach(l => l.forEach((q, i) => i ? x.lineTo(tx(q[0]), ty(q[1])) : x.moveTo(tx(q[0]), ty(q[1])))); };
+  x.lineJoin = 'round'; x.lineCap = 'round';
+  if (S.lay.pot) S.feats.classes.forEach(it => {
+    const kod = +it.p.kod, col = kod === 3 ? 'rgba(229,83,60,.30)' : kod === 2 ? 'rgba(242,165,65,.24)' : null; if (!col) return;
+    path(it.g.polys); x.fillStyle = col; x.fill('evenodd');
+  });
+  if (S.lay.zon) S.feats.zones.forEach(it => {
+    const col = ZONE_COLOR[it.p.klass] || '#f2a541'; path(it.g.polys);
+    x.fillStyle = col + '22'; x.fill('evenodd'); x.strokeStyle = col; x.lineWidth = m(1.8); x.stroke();
+  });
+  if (S.lay.zon || S.lay.pot) S.feats.study.forEach(it => { path(it.g.polys); x.setLineDash([m(7), m(5)]); x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = m(1.1); x.stroke(); x.setLineDash([]); });
+  const drawItems = (list, colorOf) => list.forEach(it => {
+    const col = colorOf(it);
+    if (it.g.polys.length) { path(it.g.polys); x.fillStyle = col + '44'; x.fill('evenodd'); x.strokeStyle = col; x.lineWidth = m(0.8); x.stroke(); }
+    if (it.g.lines.length) { lines(it.g.lines); x.strokeStyle = col; x.lineWidth = m(1); x.stroke(); }
+    it.g.pts.forEach(q => { x.beginPath(); x.arc(tx(q[0]), ty(q[1]), m(2.5), 0, Math.PI * 2); x.fillStyle = col + '88'; x.fill(); x.strokeStyle = col; x.lineWidth = m(0.6); x.stroke(); });
+  });
+  if (S.lay.lamn) drawItems(S.feats.lamn, it => lamnInfo(it.p).color);
+  if (S.lay.egen) drawItems(S.feats.egen, () => LAMN_COLOR.egen);
+  if (overlayTex) overlayTex.needsUpdate = true;
+}
+
+// ---------- Nålar med etiketter ----------
+function makeLabelCanvas(title, sub, color) {
+  const f1 = '600 32px "IBM Plex Sans", system-ui, sans-serif', f2 = '500 25px "IBM Plex Mono", ui-monospace, monospace';
+  const m = document.createElement('canvas').getContext('2d');
+  m.font = f1; const w1 = m.measureText(title).width; m.font = f2; const w2 = m.measureText(sub).width;
+  const W = Math.ceil(Math.min(560, Math.max(w1, w2) + 70)), H = 96, c = document.createElement('canvas'); c.width = W; c.height = H + 14;
+  const x = c.getContext('2d');
+  const r = 18; x.fillStyle = 'rgba(11,18,16,.84)'; x.strokeStyle = 'rgba(224,240,232,.3)'; x.lineWidth = 2;
+  x.beginPath(); x.moveTo(r, 1); x.arcTo(W - 1, 1, W - 1, H, r); x.arcTo(W - 1, H, 0, H, r); x.lineTo(W / 2 + 10, H); x.lineTo(W / 2, H + 13); x.lineTo(W / 2 - 10, H); x.arcTo(1, H, 1, 1, r); x.arcTo(1, 1, W - 1, 1, r); x.closePath(); x.fill(); x.stroke();
+  x.fillStyle = color; x.beginPath(); x.arc(30, 34, 9, 0, Math.PI * 2); x.fill();
+  x.fillStyle = '#eef4f1'; x.font = f1; x.textBaseline = 'middle'; x.fillText(title, 50, 35, W - 64);
+  x.fillStyle = '#b2c0b9'; x.font = f2; x.fillText(sub, 50, 71, W - 64);
+  return c;
+}
+function distTxt(d) { return d < 1000 ? `${fmt(Math.round(d / (d < 100 ? 1 : 5)) * (d < 100 ? 1 : 5))} m` : `${fmt(d / 1000, 1)} km`; }
+function buildPins() {
+  PINS.forEach(p => { p.sprite.material.map.dispose(); p.sprite.material.dispose(); });
+  PINS.length = 0; while (pinGroup.children.length) pinGroup.remove(pinGroup.children[0]);
+  const a = S.area, R = a.R;
+  const add = (kind, it, E, N, title, sub, color, pole) => {
+    if (Math.abs(E - a.E0) > R || Math.abs(N - a.N0) > R) return;
+    const z = demAt(S.dem, E, N), base = new THREE.Vector3(E - a.E0, z, -(N - a.N0)), top = base.clone(); top.y += pole;
+    const lg = new THREE.BufferGeometry().setFromPoints([base, top]);
+    const line = new THREE.Line(lg, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85, depthTest: false }));
+    const tex = new THREE.CanvasTexture(makeLabelCanvas(title, sub, color)); tex.minFilter = THREE.LinearFilter;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, sizeAttenuation: false, transparent: true }));
+    sprite.center.set(0.5, 0); sprite.position.copy(top); line.renderOrder = 9; sprite.renderOrder = 10;
+    const obj = new THREE.Group(); obj.add(line); obj.add(sprite); obj.visible = false; pinGroup.add(obj);
+    PINS.push({ kind, it, E, N, z, top, obj, sprite, title, sub, color, b: -1, d: 0 });
+  };
+  S.feats.zones.forEach(it => { const q = repPoint(it.g); if (!q) return; add('zon', it, q[0], q[1], `Zon ${it.p.zon || ''}`.trim(), `${it.p.klass || ''} potential`, ZONE_COLOR[it.p.klass] || '#f2a541', 7); });
+  S.feats.lamn.forEach(it => { const q = repPoint(it.g); if (!q) return; const i = lamnInfo(it.p); add('lamn', it, q[0], q[1], it.p.lamningstyp || 'Lämning', it.p.lamningsnummer || it.p.raa_nummer || '', i.color, 3); });
+  S.feats.egen.forEach(it => { const q = repPoint(it.g); if (!q) return; add('egen', it, q[0], q[1], labelOf(it.p), '', LAMN_COLOR.egen, 3); });
+  sizePins();
+}
+let vfov = 60;
+function sizePins() {
+  const pxH = 48, sh = window.innerHeight || 800, k = 2 * Math.tan(vfov / 2 * D2R) / sh;
+  PINS.forEach(p => { const img = p.sprite.material.map.image; const h = pxH * img.height / 96; p.sprite.scale.set(h * img.width / img.height * k, h * k, 1); p.pxH = h; p.pxW = h * img.width / img.height; });
+}
+const MAXD = 650, MAXN = 30;
+function declutter() {
+  const W = window.innerWidth, H = window.innerHeight, rects = [];
+  const vis = PINS.filter(p => p.obj.visible).sort((a, b) => (a.kind === 'zon') - (b.kind === 'zon') || a.d - b.d);
+  vis.forEach(p => {
+    _v.copy(p.top).applyMatrix4(camera.matrixWorldInverse);
+    if (_v.z > -0.5) { p.sprite.visible = false; return; }
+    _v.copy(p.top).project(camera);
+    const sx = (_v.x + 1) / 2 * W, sy = (1 - _v.y) / 2 * H, w = p.pxW || 120, h = p.pxH || 50;
+    const r = [sx - w / 2, sy - h, sx + w / 2, sy];
+    const hit = rects.some(q => r[0] < q[2] + 4 && r[2] + 4 > q[0] && r[1] < q[3] + 4 && r[3] + 4 > q[1]);
+    p.sprite.visible = !hit; if (!hit) rects.push(r);
+  });
+}
+function updatePins() {
+  const cx = P.curE, cy = P.curN, near = [];
+  PINS.forEach(p => {
+    p.d = Math.hypot(p.E - cx, p.N - cy); p.obj.visible = false;
+    const on = p.kind === 'zon' ? S.lay.zon : p.kind === 'lamn' ? S.lay.lamn : S.lay.egen; if (!on) return;
+    if (p.kind === 'zon' ? p.d > 1600 : p.d > MAXD) return; near.push(p);
+  });
+  near.sort((a, b) => a.d - b.d);
+  near.slice(0, MAXN).forEach(p => {
+    p.obj.visible = true;
+    const b = distTxt(p.d);
+    if (b !== p.b) {
+      p.b = b; const sub = p.kind === 'zon' ? `${p.sub} · ${distTxt(p.d)}` : p.sub ? `${p.sub} · ${distTxt(p.d)}` : distTxt(p.d);
+      const old = p.sprite.material.map; p.sprite.material.map = new THREE.CanvasTexture(makeLabelCanvas(p.title, sub, p.color)); p.sprite.material.map.minFilter = THREE.LinearFilter; old.dispose();
+      const img = p.sprite.material.map.image, k = 2 * Math.tan(vfov / 2 * D2R) / (window.innerHeight || 800), h = p.pxH || 48;
+      p.sprite.scale.set(h * img.width / img.height * k, h * k, 1); p.pxW = h * img.width / img.height;
+    }
+    p.sprite.material.opacity = clamp(1.2 - p.d / MAXD * 0.6, 0.55, 1);
+  });
+}
+
+// =====================================================================
+// Minikarta
+// =====================================================================
+let hillCv, waterCv, miniR = store.get('miniR', 300);
+function buildMiniBase() {
+  const d = S.dem; hillCv = document.createElement('canvas'); hillCv.width = d.nx; hillCv.height = d.ny;
+  const x = hillCv.getContext('2d'), im = x.createImageData(d.nx, d.ny);
+  for (let j = 0; j < d.ny; j++) for (let i = 0; i < d.nx; i++) {
+    const k = j * d.nx + i, zx = (d.z[j * d.nx + Math.min(d.nx - 1, i + 1)] - d.z[j * d.nx + Math.max(0, i - 1)]) / (2 * d.ds), zy = (d.z[Math.min(d.ny - 1, j + 1) * d.nx + i] - d.z[Math.max(0, j - 1) * d.nx + i]) / (2 * d.ds);
+    const sh = clamp(0.62 + (-zx * 0.55 + zy * 0.55) * 2.2, 0.15, 1), o = ((d.ny - 1 - j) * d.nx + i) * 4;
+    im.data[o] = 70 * sh + 20; im.data[o + 1] = 84 * sh + 22; im.data[o + 2] = 74 * sh + 20; im.data[o + 3] = 255;
+  }
+  x.putImageData(im, 0, 0);
+  waterCv = document.createElement('canvas'); waterCv.width = d.nx; waterCv.height = d.ny; drawWaterMask();
+}
+function drawWaterMask() {
+  if (!waterCv) return; const d = S.dem, x = waterCv.getContext('2d'); x.clearRect(0, 0, d.nx, d.ny);
+  const L = U.uL.value; if (!S.lay.hav || L < -500) return;
+  const im = x.createImageData(d.nx, d.ny);
+  for (let j = 0; j < d.ny; j++) for (let i = 0; i < d.nx; i++) if (d.z[j * d.nx + i] < L) { const o = ((d.ny - 1 - j) * d.nx + i) * 4; im.data[o] = 60; im.data[o + 1] = 140; im.data[o + 2] = 215; im.data[o + 3] = 200; }
+  x.putImageData(im, 0, 0);
+}
+function drawMini(az, hfov) {
+  const cv = $('mini'), dpr = Math.min(window.devicePixelRatio || 1, 2), W = 132 * dpr;
+  if (cv.width !== W) { cv.width = cv.height = W; }
+  const x = cv.getContext('2d'), a = S.area, R = a.R, c = W / 2, k = (W / 2) / miniR;
+  x.clearRect(0, 0, W, W); x.save(); x.beginPath(); x.arc(c, c, c - 1, 0, Math.PI * 2); x.clip();
+  x.fillStyle = '#0e1513'; x.fillRect(0, 0, W, W);
+  x.translate(c, c); x.rotate(-az * D2R); x.scale(k, k); x.translate(-(P.curE - (a.E0 - R)), -((a.N0 + R) - P.curN));
+  x.imageSmoothingEnabled = true;
+  if (hillCv) x.drawImage(hillCv, 0, 0, 2 * R, 2 * R);
+  if (waterCv) x.drawImage(waterCv, 0, 0, 2 * R, 2 * R);
+  x.drawImage(overlayCv, 0, 0, 2 * R, 2 * R);
+  const r = 3.2 / k;
+  PINS.forEach(p => { const on = p.kind === 'zon' ? false : p.kind === 'lamn' ? S.lay.lamn : S.lay.egen; if (!on) return; x.beginPath(); x.arc(p.E - (a.E0 - R), (a.N0 + R) - p.N, r, 0, Math.PI * 2); x.fillStyle = p.color; x.fill(); });
+  x.restore();
+  // synfält och egen position
+  x.save(); x.translate(c, c);
+  const h = (hfov || 60) / 2 * D2R, L = c;
+  const gr = x.createRadialGradient(0, 0, 0, 0, 0, L); gr.addColorStop(0, 'rgba(255,240,201,.45)'); gr.addColorStop(1, 'rgba(255,240,201,0)');
+  x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, L, -Math.PI / 2 - h, -Math.PI / 2 + h); x.closePath(); x.fillStyle = gr; x.fill();
+  x.beginPath(); x.arc(0, 0, 5 * dpr, 0, Math.PI * 2); x.fillStyle = '#fff0c9'; x.fill(); x.lineWidth = 2 * dpr; x.strokeStyle = '#0b1210'; x.stroke();
+  // norrpil på kanten
+  const na = -az * D2R - Math.PI / 2, nr = c - 10 * dpr;
+  x.font = `600 ${11 * dpr}px "IBM Plex Mono", monospace`; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = 'rgba(11,18,16,.85)'; x.beginPath(); x.arc(Math.cos(na) * nr, Math.sin(na) * nr, 8 * dpr, 0, Math.PI * 2); x.fill();
+  x.fillStyle = '#eef4f1'; x.fillText('N', Math.cos(na) * nr, Math.sin(na) * nr + 0.5);
+  x.restore();
+  $('miniLbl').textContent = `${fmt(miniR)} m`;
+}
+
+// =====================================================================
+// Orientering, GPS och kamera
+// =====================================================================
+const O = { have: false, a: 0, b: 0, g: 0 };
+const C = { off: 0, cx: 1, sy: 0, n: 0, acc: null, src: null };
+const P = { have: false, E: 0, N: 0, acc: null, lock: false, curE: 0, curN: 0, watch: null };
+let MODE = null, DECL = 6, desk = { yaw: 0, pitch: -8 }, stream = null, wake = null;
+let _e, _q0, _q1, _zee, _y, _v, _qa, _qy;
+function init3() { if (_e) return true; if (typeof THREE === 'undefined') return false; _e = new THREE.Euler();
+  _q0 = new THREE.Quaternion();
+  _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+  _zee = new THREE.Vector3(0, 0, 1);
+  _y = new THREE.Vector3(0, 1, 0);
+  _v = new THREE.Vector3();
+  _qa = new THREE.Quaternion();
+  _qy = new THREE.Quaternion(); U.uCam.value = new THREE.Vector3(); return true; }
+const screenAngle = () => (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
+function devQuat(q, a, b, g, o) { _e.set(b * D2R, a * D2R, -g * D2R, 'YXZ'); q.setFromEuler(_e); q.multiply(_q1); q.multiply(_q0.setFromAxisAngle(_zee, -o * D2R)); return q; }
+function azOf(q) { _v.set(0, 0, -1).applyQuaternion(q); return { az: (Math.atan2(_v.x, -_v.z) * R2D + 360) % 360, fy: _v.y }; }
+function onOri(e) {
+  if (e.alpha == null) return;
+  O.a = e.alpha; O.b = e.beta; O.g = e.gamma; O.have = true;
+  const h = e.webkitCompassHeading;
+  if (typeof h === 'number' && isFinite(h)) {
+    C.acc = e.webkitCompassAccuracy; C.src = 'ios';
+    if (CAL.lockCompass && C.n >= 25) return;
+    if (Math.abs(O.g) > 25 && Math.abs(O.b) > 20) return; // bara när telefonen hålls utan sidolutning
+    if (C.acc != null && (C.acc < 0 || C.acc > 45)) return;
+    devQuat(_qa, O.a, O.b, O.g, screenAngle()); const r = azOf(_qa); if (Math.abs(r.fy) > 0.8) return;
+    const d = (h + DECL - r.az) * D2R, k = C.n < 25 ? 0.25 : 0.035;
+    C.cx = C.cx * (1 - k) + Math.cos(d) * k; C.sy = C.sy * (1 - k) + Math.sin(d) * k; C.n++;
+    C.off = Math.atan2(C.sy, C.cx) * R2D;
+  } else if (e.absolute === true) { C.src = 'abs'; C.off = DECL; C.n = 1; }
+}
+function onGeo(p) {
+  const [E, N] = GK.toGrid(p.coords.latitude, p.coords.longitude);
+  P.acc = p.coords.accuracy;
+  if (P.lock) return;
+  if (!P.have) { P.E = E; P.N = N; P.curE = E; P.curN = N; P.have = true; return; }
+  const k = P.acc <= 5 ? 0.5 : P.acc <= 12 ? 0.3 : 0.15;
+  P.E += (E - P.E) * k; P.N += (N - P.N) * k;
+}
+function onGeoErr(e) { if (MODE === 'ar') toast(e.code === 1 ? 'Platsåtkomst nekades. Tillåt plats för Safari i Inställningar.' : 'Ingen GPS-position ännu.', true); }
+async function startAR() {
+  if (!S.dem) return;
+  if (!init3()) { toast('3D-delen kunde inte laddas (cdnjs.cloudflare.com blockeras eller saknar nät). Ladda om sidan med nätanslutning.', true); return; }
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const r = await DeviceOrientationEvent.requestPermission(); if (r !== 'granted') throw new Error('orient');
+    }
+  } catch (e) { toast('Rörelse och orientering nekades. Stäng fliken, öppna sidan igen och tillåt åtkomst.', true); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('Kameran kräver att sidan öppnas via https i Safari.', true); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    const v = $('cam'); v.srcObject = stream; await v.play().catch(() => { });
+  } catch (e) { toast('Kameran gick inte att starta: ' + (e.name === 'NotAllowedError' ? 'åtkomst nekades' : e.message), true); return; }
+  C.n = 0; C.cx = 1; C.sy = 0; C.off = 0; P.have = false; P.lock = false; P.acc = null;
+  P.E = P.curE = S.area.E0; P.N = P.curN = S.area.N0;
+  window.addEventListener('deviceorientation', onOri, true);
+  if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', onOri, true);
+  if (navigator.geolocation) P.watch = navigator.geolocation.watchPosition(onGeo, onGeoErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+  try { if ('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); } catch (e) { }
+  enterView('ar');
+}
+function startDesk() { if (!S.dem) return; if (!init3()) { toast('3D-delen kunde inte laddas (cdnjs.cloudflare.com blockeras eller saknar nät). Ladda om sidan med nätanslutning.', true); return; } P.have = true; P.lock = true; P.E = P.curE = S.area.E0; P.N = P.curN = S.area.N0; P.acc = null; desk = { yaw: 0, pitch: -10 };
+  { let lo = Infinity; for (let a = 0; a < 360; a += 10) { const z = demAt(S.dem, P.E + Math.sin(a * D2R) * 300, P.N + Math.cos(a * D2R) * 300); if (z < lo) { lo = z; desk.yaw = a; } } }
+  enterView('desk'); }
+async function enterView(mode) {
+  try { if (document.fonts && document.fonts.ready) await Promise.race([document.fonts.ready, sleep(1500)]); } catch (e) { }
+  MODE = mode;
+  const ll = GK.toGeo(S.area.E0, S.area.N0); DECL = declination(ll[0], ll[1]);
+  $('setup').hidden = true; $('view').hidden = false; $('view').classList.toggle('desk', mode === 'desk');
+  $('cam').hidden = mode !== 'ar'; $('cDemo').hidden = !S.demo;
+  U.uDesk.value = mode === 'desk' ? 1 : 0;
+  initScene(); buildPeriodChips(); buildLayerChips(); setYear(S.year, true); onResize(); showPanel('sheet');
+  $('bLock').textContent = P.lock && mode === 'ar' ? 'Släpp position' : 'Lås position'; $('bLock').hidden = mode !== 'ar';
+  if (mode === 'desk') toast('Dra i bilden för att se dig om. Tryck i kartan för att flytta dig.');
+  else setTimeout(() => { if (MODE === 'ar' && !P.have) toast('Väntar på GPS…'); }, 2500);
+  if (!loopOn) { loopOn = true; requestAnimationFrame(frame); }
+}
+function exitView() {
+  MODE = null; loopOn = false;
+  window.removeEventListener('deviceorientation', onOri, true); window.removeEventListener('deviceorientationabsolute', onOri, true);
+  if (P.watch != null) { navigator.geolocation.clearWatch(P.watch); P.watch = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  try { wake && wake.release(); } catch (e) { } wake = null;
+  $('view').hidden = true; $('setup').hidden = false; renderSetup();
+}
+function arFov() {
+  const v = $('cam'), vw = v.videoWidth, vh = v.videoHeight, sw = window.innerWidth, sh = window.innerHeight;
+  if (MODE !== 'ar' || !vw) return MODE === 'desk' ? 60 : 2 * Math.atan(Math.tan(CAL.fov / 2 * D2R) * Math.min(1, sh / Math.max(sw, sh))) * R2D;
+  const f = (Math.max(vw, vh) / 2) / Math.tan(CAL.fov / 2 * D2R), sc = Math.max(sw / vw, sh / vh);
+  return 2 * Math.atan((sh / 2) / (f * sc)) * R2D;
+}
+function onResize() {
+  if (!renderer || !MODE) return;
+  const w = window.innerWidth, h = window.innerHeight; renderer.setSize(w, h, false);
+  camera.aspect = w / h; vfov = arFov(); camera.fov = vfov; camera.updateProjectionMatrix(); sizePins();
+}
+window.addEventListener('resize', () => setTimeout(onResize, 60));
+$('cam').addEventListener('loadedmetadata', onResize);
+
+// ---------- Bildloop ----------
+let loopOn = false, lastHud = 0, lastPins = 0, curAz = 0;
+function camHeight() { return demAt(S.dem, P.curE, P.curN) + CAL.eye + CAL.hOff; }
+function frame(t) {
+  if (!loopOn) return; requestAnimationFrame(frame);
+  if (MODE === 'ar') {
+    if (O.have) {
+      devQuat(_qa, O.a, O.b, O.g, screenAngle());
+      const off = C.off + CAL.userOff; _qy.setFromAxisAngle(_y, -off * D2R);
+      camera.quaternion.copy(_qy).multiply(_qa);
+    }
+  } else { _e.set(desk.pitch * D2R, -desk.yaw * D2R, 0, 'YXZ'); camera.quaternion.setFromEuler(_e); }
+  P.curE += (P.E - P.curE) * 0.12; P.curN += (P.N - P.curN) * 0.12;
+  const a = S.area; camera.position.set(P.curE - a.E0, camHeight(), -(P.curN - a.N0));
+  U.uCam.value.copy(camera.position); U.uT.value = t / 1000;
+  curAz = azOf(camera.quaternion).az;
+  if (t - lastPins > 250) { lastPins = t; updatePins(); }
+  camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); declutter();
+  if (t - lastHud > 200) { lastHud = t; updateHud(); }
+  renderer.render(scene, camera);
+}
+function updateHud() {
+  const g = $('cGps');
+  if (MODE === 'desk') { g.className = 'chip'; g.innerHTML = '<span>Skrivbordsläge</span>'; }
+  else if (P.lock) { g.className = 'chip warn'; g.innerHTML = '<i class="dot"></i><span>Position låst</span>'; }
+  else if (!P.have) { g.className = 'chip err'; g.innerHTML = '<i class="dot"></i><span>Väntar på GPS</span>'; }
+  else { g.className = 'chip ' + (P.acc <= 6 ? 'ok' : P.acc <= 15 ? 'warn' : 'err'); g.innerHTML = `<i class="dot"></i><span>GPS ±${fmt(P.acc)} m</span>`; }
+  const comp = MODE === 'ar' && C.src === 'ios' && C.acc != null && C.acc > 25 ? ' ⚠' : '';
+  $('cHead').innerHTML = `<span>${fmt(curAz)}° ${dirName(curAz)}${comp}</span>`;
+  const zg = demAt(S.dem, P.curE, P.curN);
+  $('cElev').innerHTML = `<span>${fmt(zg, 1)} m ö.h.</span>`;
+  const a = S.area, dc = Math.hypot(P.curE - a.E0, P.curN - a.N0), ce = $('cEdge');
+  if (dc > a.R * 0.85) { ce.hidden = false; ce.querySelector('span').textContent = dc > a.R ? `${distTxt(dc - a.R)} utanför området` : 'Nära kanten av området'; } else ce.hidden = true;
+  const L = U.uL.value, under = S.lay.hav && L > -500 && camera.position.y < L;
+  $('under').hidden = !under; if (under) $('underTxt').textContent = `Du står ${fmt(L - camera.position.y + CAL.eye, 1)} m under dåtidens havsyta`;
+  updateLevelTxt(zg);
+  drawMini(curAz, 2 * Math.atan(Math.tan(vfov / 2 * D2R) * camera.aspect) * R2D);
+}
+
+// =====================================================================
+// Tid och lager
+// =====================================================================
+function setYear(y, init) {
+  S.year = y; const r = $('yr');
+  const p0 = S.curve && S.curve.pts.length ? S.curve.pts[0][0] : -9500;
+  r.min = Math.min(-9500, Math.floor((p0 - 500) / 500) * 500); r.max = 1900; r.value = y;
+  store.set('year', y);
+  const sh = shoreAt(y);
+  U.uL.value = sh ? sh.L : -999; water.position.y = sh ? sh.L : -999;
+  water.visible = !!sh && S.lay.hav; U.uHav.value = sh ? 1 : 0; U.uShore.value = S.lay.strand ? 1 : 0;
+  $('yrTxt').textContent = fmtYear(y); $('perTxt').textContent = periodOf(y);
+  document.querySelectorAll('#perChips button').forEach(b => { const p = PERIODS[+b.dataset.i]; b.classList.toggle('on', p ? y >= p.a && y < p.b : y >= 1850); });
+  scheduleWater(); updateLevelTxt();
+  if (!init) renderCurve();
+}
+let waterPending = false;
+function scheduleWater() { if (waterPending) return; waterPending = true; requestAnimationFrame(() => { waterPending = false; drawWaterMask(); }); }
+function updateLevelTxt(zg) {
+  const el = $('lvlTxt'); if (!S.dem) return;
+  if (zg == null) zg = demAt(S.dem, P.curE, P.curN);
+  const sh = shoreAt(S.year);
+  const em = emergeAt(P.curE, P.curN);
+  const emTxt = em ? (em.above ? 'över högsta kustlinjen' : em.y != null ? `blev land ca ${fmtYear(em.y)}` : '') : '';
+  if (!sh) { el.innerHTML = S.curve ? 'Inget forntida hav här' : 'Ingen strandkurva<br><span>ange nivå under Kalibrera</span>'; return; }
+  const diff = zg - sh.L;
+  el.innerHTML = `Havsytan <b>${fmt(sh.L, 1)} m</b>${sh.note ? ` <span>(${esc(sh.note)})</span>` : ''}<br>${diff >= 0 ? `du står ${fmt(diff, 1)} m över` : `${fmt(-diff, 1)} m vatten här`}${emTxt ? ` · ${emTxt}` : ''}`;
+}
+function buildPeriodChips() {
+  $('perChips').innerHTML = PERIODS.map((p, i) => `<button type="button" data-i="${i}" title="${esc(p.name)}, ${fmtYear(p.a)}–${fmtYear(p.b)}">${p.k}</button>`).join('') + `<button type="button" data-now="1">Idag</button>`;
+}
+const LAYERS = [
+  { k: 'hav', n: 'Hav', c: '#57a9e8' }, { k: 'strand', n: 'Strandlinje', c: '#fff0c9' }, { k: 'pot', n: 'Potential', c: '#e5533c' },
+  { k: 'zon', n: 'Zoner', c: '#f2a541' }, { k: 'lamn', n: 'Lämningar', c: '#b88cf0' }, { k: 'egen', n: 'Egna lager', c: '#e8f1ff' }, { k: 'kurv', n: 'Höjdkurvor', c: '#ffffff' },
+];
+function buildLayerChips() {
+  const has = { pot: S.feats.classes.length, zon: S.feats.zones.length || S.feats.study.length, lamn: S.feats.lamn.length, egen: S.feats.egen.length, hav: 1, strand: 1, kurv: 1 };
+  $('layChips').innerHTML = LAYERS.filter(l => has[l.k]).map(l => `<button type="button" data-k="${l.k}" class="${S.lay[l.k] ? 'on' : ''}" aria-pressed="${!!S.lay[l.k]}"><i style="background:${l.c}"></i>${l.n}</button>`).join('');
+  U.uCont.value = S.lay.kurv ? 2.5 : 0;
+}
+$('perChips').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.now) { setYear(1900); return; }
+  const p = PERIODS[+b.dataset.i]; setYear(Math.round((p.a + p.b) / 2 / 50) * 50);
+});
+$('layChips').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const k = b.dataset.k; S.lay[k] = !S.lay[k]; store.set('lay', S.lay);
+  b.classList.toggle('on', S.lay[k]); b.setAttribute('aria-pressed', S.lay[k]);
+  if (k === 'kurv') U.uCont.value = S.lay.kurv ? 2.5 : 0;
+  if (k === 'hav' || k === 'strand') setYear(S.year, true);
+  if (k === 'pot' || k === 'zon' || k === 'lamn' || k === 'egen') drawOverlay();
+  lastPins = 0;
+});
+$('yr').addEventListener('input', e => setYear(+e.target.value));
+
+// =====================================================================
+// Paneler: huvudpanel, infokort, kalibrering
+// =====================================================================
+let selPin = null, aimMode = false;
+function showPanel(id) { ['sheet', 'card', 'calib'].forEach(k => $(k).hidden = k !== id); }
+$('bFold').addEventListener('click', () => $('sheet').classList.toggle('collapsed'));
+function showCard(p) {
+  selPin = p; const it = p.it, pr = it.p, a = S.area;
+  const az = (Math.atan2(p.E - P.curE, p.N - P.curN) * R2D + 360) % 360;
+  const em = emergeAt(p.E, p.N);
+  const rows = [];
+  rows.push(['Avstånd', `${distTxt(p.d)} åt ${dirName(az)} (${fmt(az)}°)`]);
+  rows.push(['Höjd', `${fmt(p.z, 1)} m ö.h.`]);
+  if (em) rows.push(['Blev land', em.above ? 'Ovanför högsta kustlinjen' : em.y != null ? `ca ${fmtYear(em.y)} (${em.src === 'SGU' ? 'SGU' : 'strandkurvan'})` : '–']);
+  let head = '';
+  if (p.kind === 'zon') {
+    const col = ZONE_COLOR[pr.klass] || '#f2a541';
+    head = `<h3>Zon ${esc(pr.zon || '')}</h3><span class="tag"><i style="background:${col}"></i>${esc(pr.klass || '')} potential</span>`;
+    [['Tolkning', pr.tolkning], ['Motivering', pr.motivering], ['Jordart', pr.jordart], ['Area', pr.area_ha != null ? fmt(pr.area_ha, 2) + ' ha' : null], ['Lutning', pr.medellutning != null ? fmt(pr.medellutning, 1) + '°' : null], ['Prioritet', pr.prioritet], ['Robusthet', pr.robusthet], ['Mark idag', pr.markanvandning_idag], ['Metod', pr.metodforslag]].forEach(r => r[1] != null && r[1] !== '' && rows.push(r));
+  } else if (p.kind === 'lamn') {
+    const i = lamnInfo(pr);
+    head = `<h3>${esc(pr.lamningstyp || 'Lämning')}</h3><div class="sub">${esc(pr.lamningsnummer || '')}${pr.raa_nummer ? ' · ' + esc(pr.raa_nummer) : ''}</div><span class="tag"><i style="background:${i.color}"></i>${esc(pr.antikvariskbedomning || BK_NAME[i.bk])}</span>`;
+    [['Namn', pr.lamningsnamn], ['Status', pr.aktualitetstatus], ['Kommun', pr.kommun]].forEach(r => r[1] && rows.push(r));
+  } else {
+    head = `<h3>${esc(labelOf(pr))}</h3><span class="tag"><i style="background:${LAMN_COLOR.egen}"></i>Eget lager</span>`;
+    Object.entries(pr).slice(0, 8).forEach(([k, v]) => { if (v != null && typeof v !== 'object' && String(v).length < 140) rows.push([k, String(v)]); });
+  }
+  $('card').innerHTML = `<button class="x" type="button" id="bCardX" aria-label="Stäng">×</button>${head}<dl class="kv">${rows.map(r => `<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('')}</dl>
+    <div class="acts">${MODE === 'ar' ? '<button class="btn" type="button" id="bAim">Rikta in mot den</button>' : ''}<button class="btn" type="button" id="bHere">Jag står här</button></div>`;
+  showPanel('card');
+  $('bCardX').onclick = () => showPanel('sheet');
+  $('bHere').onclick = () => { P.lock = true; P.E = p.E; P.N = p.N; if (MODE === 'desk') { P.curE = p.E; P.curN = p.N; } $('bLock').textContent = 'Släpp position'; showPanel('sheet'); toast('Positionen är låst vid ' + p.title + '.'); };
+  const ba = $('bAim'); if (ba) ba.onclick = () => { aimMode = true; openCal(); $('calHint').innerHTML = `Sikta med korset i mitten på <b>${esc(p.title)}</b> i verkligheten och tryck <b>Rikta in</b>.`; $('bCalDone').textContent = 'Rikta in'; };
+}
+function openCal() { showPanel('calib'); renderCal(); }
+function renderCal() {
+  $('oYaw').textContent = `${CAL.userOff >= 0 ? '+' : ''}${fmt(CAL.userOff, 1)}°`;
+  $('oH').textContent = `${CAL.hOff >= 0 ? '+' : ''}${fmt(CAL.hOff, 1)} m`;
+  $('oEye').textContent = `${fmt(CAL.eye, 1)} m`; $('oFov').textContent = `${fmt(CAL.fov, 0)}°`;
+  document.querySelectorAll('#segComp button').forEach(b => b.classList.toggle('on', (+b.dataset.v === 1) === !!CAL.lockCompass));
+  const own = S.manualL != null;
+  document.querySelectorAll('#segLvl button').forEach(b => b.classList.toggle('on', (b.dataset.v === 'egen') === own));
+  document.querySelectorAll('.lvlb').forEach(el => el.hidden = !own);
+  $('oLvl').textContent = own ? `${fmt(S.manualL, 1)} m` : '';
+}
+$('calib').addEventListener('click', e => {
+  const b = e.target.closest('button[data-c]'); if (!b) return;
+  const d = +b.dataset.d;
+  if (b.dataset.c === 'yaw') CAL.userOff = wrap180(CAL.userOff + d);
+  if (b.dataset.c === 'h') CAL.hOff = clamp(CAL.hOff + d, -30, 30);
+  if (b.dataset.c === 'eye') CAL.eye = clamp(Math.round((CAL.eye + d) * 10) / 10, 0.5, 3);
+  if (b.dataset.c === 'fov') { CAL.fov = clamp(CAL.fov + d, 40, 110); onResize(); }
+  if (b.dataset.c === 'lvl') { S.manualL = Math.round((S.manualL + d) * 10) / 10; setYear(S.year); }
+  saveCal(); renderCal();
+});
+$('segComp').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; CAL.lockCompass = b.dataset.v === '1'; saveCal(); renderCal(); });
+$('segLvl').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.v === 'egen') { const sh = shoreAt(S.year); S.manualL = sh ? Math.round(sh.L * 10) / 10 : Math.round(demAt(S.dem, P.curE, P.curN) - 2); }
+  else S.manualL = null;
+  setYear(S.year); renderCal();
+});
+$('bCenter').addEventListener('click', () => { P.lock = true; P.E = S.area.E0; P.N = S.area.N0; P.curE = P.E; P.curN = P.N; $('bLock').textContent = 'Släpp position'; toast('Positionen är låst mitt i området.'); });
+$('bCalReset').addEventListener('click', () => { CAL.userOff = 0; CAL.hOff = 0; CAL.eye = 1.6; CAL.fov = 67.3; CAL.lockCompass = false; C.n = 0; saveCal(); onResize(); renderCal(); });
+$('bCalDone').addEventListener('click', () => {
+  if (aimMode && selPin) {
+    const t = (Math.atan2(selPin.E - P.curE, selPin.N - P.curN) * R2D + 360) % 360;
+    CAL.userOff = wrap180(CAL.userOff + wrap180(t - curAz)); CAL.lockCompass = true; saveCal();
+    toast(`Inriktad mot ${selPin.title}. Kompassen är låst så att riktningen står still.`);
+  }
+  aimMode = false; $('bCalDone').textContent = 'Klar';
+  $('calHint').innerHTML = 'Dra i bilden: åt sidan vrider lagren, upp och ned höjer och sänker dem. Säkrast: tryck på en lämning du ser och välj <b>Rikta in mot den</b>.';
+  showPanel('sheet');
+});
+$('bCal').addEventListener('click', openCal);
+$('bLock').addEventListener('click', () => { P.lock = !P.lock; if (!P.lock) P.have = false; $('bLock').textContent = P.lock ? 'Släpp position' : 'Lås position'; toast(P.lock ? 'Positionen är låst. Bra när du står still och GPS:en fladdrar.' : 'Följer GPS igen.'); });
+$('bExit').addEventListener('click', exitView);
+
+// ---------- Pekning i bilden ----------
+const drag = { on: false, x: 0, y: 0, x0: 0, y0: 0, moved: false };
+$('gl').addEventListener('pointerdown', e => { drag.on = true; drag.x = drag.x0 = e.clientX; drag.y = drag.y0 = e.clientY; drag.moved = false; try { $('gl').setPointerCapture(e.pointerId); } catch (_) { } });
+$('gl').addEventListener('pointermove', e => {
+  if (!drag.on) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+  if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 8) drag.moved = true;
+  const degPx = vfov / window.innerHeight;
+  if (!$('calib').hidden && !aimMode) { CAL.userOff = wrap180(CAL.userOff - dx * degPx); CAL.hOff = clamp(CAL.hOff + dy * 0.02, -30, 30); saveCal(); renderCal(); }
+  else if (MODE === 'desk') { desk.yaw = (desk.yaw - dx * degPx + 360) % 360; desk.pitch = clamp(desk.pitch + dy * degPx, -80, 80); }
+});
+$('gl').addEventListener('pointerup', e => { drag.on = false; if (!drag.moved) { const p = hitPin(e.clientX, e.clientY); if (p) showCard(p); } });
+$('gl').addEventListener('pointercancel', () => { drag.on = false; });
+function hitPin(x, y) {
+  let best = null; camera.updateMatrixWorld();
+  PINS.forEach(p => {
+    if (!p.obj.visible || !p.sprite.visible) return;
+    _v.copy(p.top).applyMatrix4(camera.matrixWorldInverse); if (_v.z > -0.5) return;
+    _v.copy(p.top).project(camera);
+    const sx = (_v.x + 1) / 2 * window.innerWidth, sy = (1 - _v.y) / 2 * window.innerHeight, w = p.pxW || 120, h = p.pxH || 48;
+    if (x > sx - w / 2 - 8 && x < sx + w / 2 + 8 && y > sy - h - 12 && y < sy + 10) { if (!best || p.d < best.d) best = p; }
+  });
+  return best;
+}
+$('mini').addEventListener('click', e => {
+  if (MODE === 'desk') {
+    const r = $('mini').getBoundingClientRect(), dx = e.clientX - r.left - r.width / 2, dy = e.clientY - r.top - r.height / 2, k = miniR / (r.width / 2);
+    const a = curAz * D2R, mx = dx * k, my = dy * k; // skärm → karta (rotera tillbaka)
+    const E = P.curE + mx * Math.cos(a) + (-my) * Math.sin(a), N = P.curN + (-my) * Math.cos(a) - mx * Math.sin(a);
+    if (Math.hypot(dx, dy) < 12) { miniR = miniR === 300 ? 800 : 300; store.set('miniR', miniR); return; }
+    const R = S.area.R; P.E = clamp(E, S.area.E0 - R, S.area.E0 + R); P.N = clamp(N, S.area.N0 - R, S.area.N0 + R);
+  } else { miniR = miniR === 300 ? 800 : 300; store.set('miniR', miniR); }
+});
+
+// =====================================================================
+// Startsidans knappar
+// =====================================================================
+$('segR').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; radius = +b.dataset.r; store.set('radius', radius); if (S.area && !S.demo) setArea(S.area.E0, S.area.N0, radius, S.area.src); else renderSetup(); });
+$('bMyPos').addEventListener('click', () => {
+  const msg = (t) => { const m = $('posMsg'); m.hidden = !t; m.innerHTML = t || ''; };
+  const done = () => { $('bMyPos').disabled = false; $('bMyPos').textContent = 'Min position'; };
+  if (!window.isSecureContext) { msg('Webbläsaren ger bara position till sidor som öppnas via <b>https</b>. Lägg sidan på GitHub Pages, eller ange N och E nedan.'); return; }
+  if (!navigator.geolocation) { msg('Den här webbläsaren saknar platstjänster. Ange N och E nedan i stället.'); return; }
+  msg('Söker position… Om webbläsaren frågar om plats, välj <b>Tillåt</b>.');
+  $('bMyPos').disabled = true; $('bMyPos').textContent = 'Söker position…';
+  navigator.geolocation.getCurrentPosition(p => {
+    done(); msg('');
+    const [E, N] = GK.toGrid(p.coords.latitude, p.coords.longitude); setArea(E, N, radius, `min position ±${fmt(p.coords.accuracy)} m`);
+    if (p.coords.accuracy > 500) msg(`Positionen är osäker (±${fmt(p.coords.accuracy)} m), troligen uppskattad från nätverket. På telefonen ute blir den bättre.`);
+  }, err => {
+    done();
+    msg(err.code === 1 ? 'Platsåtkomst är nekad. Klicka på <b>låset</b> i adressfältet och tillåt Plats, och kontrollera i Windows att <b>Inställningar → Sekretess → Plats</b> är på. Ladda sedan om sidan.'
+      : err.code === 3 ? 'Ingen position inom 20 sekunder. Försök igen, eller ange N och E nedan.'
+      : 'Datorn hittar ingen position. Slå på Plats i systeminställningarna, eller ange N och E nedan.');
+  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+});
+$('bFromFile').addEventListener('click', () => {
+  const list = S.feats.study.length ? S.feats.study : S.feats.zones.length || S.feats.classes.length ? S.feats.zones.concat(S.feats.classes) : S.feats.lamn;
+  const b = featBBox(list); if (!b) return;
+  const half = Math.max(b.maxE - b.minE, b.maxN - b.minN) / 2 + 200, R = clamp(Math.ceil(half / 250) * 250, 500, 2000);
+  if (half > 2000) toast('Området är större än 2 km radie. Vyn täcker mitten; välj en koordinat för andra delar.');
+  setArea((b.minE + b.maxE) / 2, (b.minN + b.maxN) / 2, R, S.feats.study.length ? 'utredningsområdet' : 'lagrens utbredning');
+});
+$('bCoord').addEventListener('click', () => {
+  const n = +String($('inN').value).replace(/[\s,]/g, ''), e = +String($('inE').value).replace(/[\s,]/g, '');
+  if (!(n > 6100000 && n < 7700000 && e > 200000 && e < 1000000)) { toast('Ange N och E i SWEREF 99 TM, t.ex. N 6 600 000 och E 650 000.', true); return; }
+  setArea(e, n, radius, 'koordinat');
+});
+$('inFile').addEventListener('change', async (e) => {
+  const fs = [...e.target.files]; e.target.value = '';
+  if (S.demo) { S.feats = { zones: [], classes: [], study: [], lamn: [], egen: [] }; S.files = []; S.demo = false; S.dem = null; S.curve = null; S.area = null; statList.length = 0; renderStat(); }
+  for (const f of fs) {
+    try { const c = ingest(f.name, JSON.parse(await f.text())); if (!Object.values(c).some(v => v)) toast(`${f.name}: hittade inga objekt.`, true); }
+    catch (err) { toast(`${f.name} kunde inte läsas som GeoJSON.`, true); }
+  }
+  renderSetup(); saveFiles();
+  if (!S.area && !$('bFromFile').disabled) $('bFromFile').click();
+});
+$('bClearFiles').addEventListener('click', () => { S.feats = { zones: [], classes: [], study: [], lamn: [], egen: [] }; S.files = []; renderSetup(); saveFiles(); });
+$('bDiag').addEventListener('click', diagnose);
+$('bFetch').addEventListener('click', () => { if (FETCH.on) { FETCH.cancel = true; renderSetup(); } else fetchAll(); });
+$('bAR').addEventListener('click', startAR);
+$('bDesk').addEventListener('click', startDesk);
+$('bDemo').addEventListener('click', () => { if (!init3()) { toast('3D-delen kunde inte laddas (cdnjs.cloudflare.com blockeras eller saknar nät). Ladda om sidan med nätanslutning.', true); return; } loadDemo(); startDesk(); });
+$('bForget').addEventListener('click', async () => { await IDB.del('last'); S.savedAt = null; S.area = null; S.dem = null; S.strand = null; S.curve = null; S.files = []; S.feats = { zones: [], classes: [], study: [], lamn: [], egen: [] }; statList.length = 0; renderStat(); renderSetup(); });
+document.addEventListener('visibilitychange', async () => { if (document.visibilityState === 'visible' && MODE === 'ar' && 'wakeLock' in navigator) { try { wake = await navigator.wakeLock.request('screen'); } catch (e) { } } });
+
+renderSetup();
+restore();
+</script>
+</body>
+</html>
