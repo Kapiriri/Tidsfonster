@@ -97,7 +97,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,label:focus-within
 .chip.demo{color:var(--warn);border-color:rgba(242,193,78,.4)}
 button.chip{min-height:32px}
 #mini{position:absolute;right:12px;top:calc(env(safe-area-inset-top,0px) + 8px);width:132px;height:132px;border-radius:50%;border:1px solid var(--line-2);background:var(--glass);box-shadow:0 4px 18px rgba(0,0,0,.35)}
-#miniLbl{position:absolute;right:12px;top:calc(env(safe-area-inset-top,0px) + 144px);width:132px;text-align:center;font:500 11px 'IBM Plex Mono',monospace;color:var(--text);text-shadow:0 1px 3px #000;pointer-events:none}
+#miniLbl{border:0;background:transparent;padding:4px 0;min-height:30px;line-height:1.25;position:absolute;right:12px;top:calc(env(safe-area-inset-top,0px) + 142px);width:132px;text-align:center;font:500 11px 'IBM Plex Mono',monospace;color:var(--text);text-shadow:0 1px 3px #000;z-index:2}
 #cross{position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;pointer-events:none;opacity:.8}
 #cross::before,#cross::after{content:"";position:absolute;background:#fff;box-shadow:0 0 2px rgba(0,0,0,.8)}
 #cross::before{left:13px;top:0;width:2px;height:28px} #cross::after{top:13px;left:0;height:2px;width:28px}
@@ -245,7 +245,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
     <span class="chip demo" id="cDemo" hidden><i class="dot"></i><span>Exempeldata</span></span>
   </div>
   <canvas id="mini" aria-label="Karta"></canvas>
-  <div id="miniLbl"></div>
+  <button id="miniLbl" type="button" aria-label="Byt bakgrundskarta"></button>
 
   <!-- huvudpanel -->
   <section class="panel" id="sheet">
@@ -672,7 +672,7 @@ function featBBox(list) {
 // Startsidan
 // =====================================================================
 function setArea(E0, N0, R, src) {
-  S.area = { E0: Math.round(E0), N0: Math.round(N0), R, src };
+  S.area = { E0: Math.round(E0), N0: Math.round(N0), R, src }; resetBase();
   if (S.dem && (Math.abs(S.dem.x0 + R - S.area.E0) > 1 || Math.abs(S.dem.y0 + R - S.area.N0) > 1 || S.dem.nx * S.dem.ds < 2 * R - 1)) { S.dem = null; S.strand = null; S.curve = null; statList.length = 0; renderStat(); }
   S.demo = false;
   renderSetup();
@@ -740,8 +740,11 @@ async function fetchAll() {
     }
   })();
   demJob.then(d => { if (FETCH.on && !FETCH.cancel) stat('dem', 'ok', 'Höjdmodell', `${d.src} · rutnät ${d.ds} m · klar`); }).catch(() => { });
+  resetBase();
+  stat('karta', 'pending', 'Bakgrundskarta', 'Hämtar topografisk karta och flygbild…', t0);
+  const mapJob = (async () => { const tp = await buildBasemap(S.area, 'topo', (d, n) => stat('karta', 'pending', 'Bakgrundskarta', `Topografisk karta… ${d} av ${n} plattor`, t0)); BASE.topo = tp.cv; BASE.url.topo = tp.url; try { const fo = await buildBasemap(S.area, 'foto', (d, n) => stat('karta', 'pending', 'Bakgrundskarta', `Flygbild… ${d} av ${n} plattor`, t0)); BASE.foto = fo.cv; BASE.url.foto = fo.url; } catch (e) { if (FETCH.cancel) throw e; } return tp; })();
   const sguJob = fetchStrand(b, (d) => stat('strand', 'pending', 'Strandförskjutning', `Hämtar SGU:s modell… ${d} tidssteg klara`, t0));
-  const [rd, rs] = await Promise.allSettled([demJob, sguJob]);
+  const [rd, rs, rm] = await Promise.allSettled([demJob, sguJob, mapJob]);
   clearInterval(tick);
   const cancelled = FETCH.cancel; FETCH.on = false; FETCH.cancel = false;
   if (rd.status === 'fulfilled') {
@@ -754,6 +757,8 @@ async function fetchAll() {
     else stat('strand', 'ok', 'Strandförskjutning', 'Området ligger ovanför högsta kustlinjen. Inget forntida hav att visa. Du kan ange en egen vattennivå i kameravyn.');
   } else if (rs.status === 'fulfilled') { S.strand = rs.value; stat('strand', 'ok', 'Strandförskjutning', 'Hämtad, men kurvan kräver höjdmodellen.'); }
   else stat('strand', 'err', 'Strandförskjutning', cancelled ? 'Avbruten. Du kan ange havsnivån själv under Kalibrera.' : `SGU svarade inte (${rs.reason && rs.reason.message}). Du kan ange havsnivån själv under Kalibrera i kameravyn.`);
+  if (rm.status === 'fulfilled') stat('karta', 'ok', 'Bakgrundskarta', `Esri topografisk karta${BASE.foto ? ' och flygbild' : ''}${BASE.url.topo ? ' · sparas för användning utan nät' : ' · kan inte sparas, kräver nät'}`);
+  else stat('karta', 'err', 'Bakgrundskarta', cancelled ? 'Avbruten.' : `Kunde inte hämtas (${rm.reason && rm.reason.message}). Minikartan visar terrängskuggning i stället.`);
   S.manualL = null;
   if (S.dem) await saveArea();
   renderSetup();
@@ -767,6 +772,7 @@ async function diagnose() {
     ['Lantmäteriets höjdmodell (JSONP)', () => jsonp(`${LST_DEM}?geometry=${E},${N}&geometryType=esriGeometryPoint&returnFirstValueOnly=true&f=json`, 15000).then(r => `${fmt(parseFloat(r.samples[0].value), 1)} m ö.h.`)],
     ['SGU strandförskjutning', () => getJSON(`${SGU_STRAND}bp5000-5900/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=bp5000-5900&STYLES=&SRS=EPSG:3006&BBOX=${E - 200},${N - 200},${E + 200},${N + 200}&WIDTH=16&HEIGHT=16&FORMAT=${encodeURIComponent('application/json;type=utfgrid')}&CQL_FILTER=${encodeURIComponent('year=-3050')}`, 20000).then(r => { if (!r.grid) throw new Error('oväntat svar'); return 'svarar'; })],
     ['AWS höjdplattor (reserv)', () => { const n = 2 ** 13, fx = Math.floor((lon + 180) / 360 * n), r = lat * D2R, fy = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return loadTerrTile(13, fx + '/' + fy).then(() => 'svarar'); }],
+    ['Esri bakgrundskarta', () => { const n = 2 ** 14, fx = Math.floor((lon + 180) / 360 * n), r = lat * D2R, fy = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return loadImg(`${BASE_SRC.topo}14/${fy}/${fx}`, true, 15000).then(() => 'svarar'); }],
     ['Open-Meteo höjd (reserv)', () => getJSON(`https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(5)}&longitude=${lon.toFixed(5)}`, 15000).then(r => `${fmt(r.elevation[0], 0)} m ö.h.`)],
   ];
   el.innerHTML = tests.map(t => `<li class="pending"><i></i><div><b>${esc(t[0])}</b><span>Testar…</span></div></li>`).join('');
@@ -781,7 +787,7 @@ async function diagnose() {
 }
 async function saveArea() {
   S.savedAt = new Date().toLocaleString('sv-SE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  const ok = await IDB.put('last', { area: S.area, dem: S.dem, strand: S.strand, feats: S.feats, files: S.files, savedAt: S.savedAt, stat: statList.slice() });
+  const ok = await IDB.put('last', { area: S.area, dem: S.dem, strand: S.strand, feats: S.feats, files: S.files, savedAt: S.savedAt, stat: statList.slice().map(x => Object.assign({}, x, { t0: null })), base: { topo: BASE.url.topo, foto: BASE.url.foto } });
   if (!ok) S.savedAt = null;
 }
 async function saveFiles() { if (S.demo) return; const d = await IDB.get('last'); if (d) { d.feats = S.feats; d.files = S.files; await IDB.put('last', d); } }
@@ -791,6 +797,7 @@ async function restore() {
   S.curve = buildCurve(S.strand, S.dem); S.savedAt = d.savedAt; radius = S.area.R;
   (d.stat || []).forEach(s => statList.push(s)); renderStat();
   renderSetup();
+  resetBase(); if (d.base) for (const k of ['topo', 'foto']) if (d.base[k]) { try { BASE[k] = await canvasFromUrl(d.base[k]); BASE.url[k] = d.base[k]; } catch (e) { } }
 }
 
 // ---------- Exempeldata (påhittad terräng) ----------
@@ -802,7 +809,7 @@ function loadDemo() {
     const knoll = 12 * Math.exp(-((x + 330) ** 2 + (y - 320) ** 2) / (2 * 110 ** 2));
     z[j * nx + i] = Math.max(0, 6 + 0.02 * (x + R) + ridge + knoll + 2.5 * Math.sin(x / 70) * Math.cos(y / 95));
   }
-  S.area = { E0, N0, R, src: 'exempel' };
+  S.area = { E0, N0, R, src: 'exempel' }; resetBase();
   S.dem = { x0: E0 - R, y0: N0 - R, ds, nx, ny, z, src: 'Exempel – påhittad terräng' };
   S.strand = null;
   const pts = []; for (let y = -7000; y <= 1900; y += 100) pts.push([y, 64 * Math.pow((1900 - y) / 8900, 1.18)]);
@@ -828,8 +835,9 @@ function loadDemo() {
 // 3D-scen
 // =====================================================================
 let renderer, scene, camera, terrain, water, overlayTex, overlayCv, pinGroup;
+const WAT = { depth: null, sea: null, cell: null, inner: null, ring: null };
 const PINS = [];
-const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 } };
+const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 }, uSun: { value: null } };
 const TER_VS = `varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
 void main(){ vUv=uv; vH=position.y; vN=normal; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
 const TER_FS = `uniform sampler2D uOver; uniform float uL; uniform float uShore; uniform float uCont; uniform float uDesk; uniform float uR; uniform vec3 uCam; uniform float uHav;
@@ -841,22 +849,46 @@ void main(){
   if(uDesk>0.5){ vec3 n=normalize(vN); if(n.y<0.0) n=-n; vec3 l=normalize(vec3(-0.5,0.55,0.45)); float sh=clamp(dot(n,l),0.0,1.0)*0.85+0.2; vec3 g=mix(vec3(0.36,0.45,0.31),vec3(0.62,0.60,0.47),smoothstep(0.0,60.0,vH))*sh; g=mix(g,vec3(0.76,0.81,0.82),smoothstep(250.0,1400.0,dist)*0.55); col=vec4(g,1.0); }
   vec4 ov=texture2D(uOver,vUv); ov.a*=1.0-smoothstep(700.0,1400.0,dist)*0.6; col=over(ov,col);
   if(uCont>0.0){ float f=vH/uCont; float w=fwidth(f); float ln=1.0-smoothstep(0.0,w*1.4,abs(fract(f+0.5)-0.5)); float fade=1.0-smoothstep(120.0,500.0,dist); col=over(vec4(1.0,1.0,1.0,0.55*ln*fade),col); }
-  if(uShore>0.5 && uHav>0.5){ float w=fwidth(vH); float s=1.0-smoothstep(max(w*1.2,0.06),max(w*3.0,0.3),abs(vH-uL)); col=over(vec4(1.0,0.94,0.79,0.95*s),col); }
+  if(uShore>0.5 && uHav>0.5){ float dh=vH-uL; if(dh>0.0 && dh<1.2) col=over(vec4(0.10,0.09,0.06,0.28*(1.0-dh/1.2)),col); float w=fwidth(vH); float s=1.0-smoothstep(max(w*1.2,0.06),max(w*3.0,0.3),abs(dh)); col=over(vec4(1.0,0.94,0.79,0.9*s),col); }
   float e=1.0-smoothstep(uR*0.9,uR,max(abs(vW.x),abs(vW.z)));
   col.a*=e;
   gl_FragColor=col;
 }`;
-const WAT_VS = `varying vec3 vW; void main(){ vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
-const WAT_FS = `uniform float uT; uniform vec3 uCam; uniform float uR; varying vec3 vW;
+const WAT_VS = `attribute float aDepth; attribute float aSea; varying float vDepth; varying float vSea; varying vec3 vW;
+void main(){ vDepth=aDepth; vSea=aSea; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
+const WAT_FS = `uniform float uT; uniform vec3 uCam; uniform float uR; uniform vec3 uSun;
+varying float vDepth; varying float vSea; varying vec3 vW;
+float wav(vec2 p){
+  return sin(dot(p,vec2(0.110,0.046))+uT*0.85)*0.50 + sin(dot(p,vec2(-0.066,0.104))+uT*1.25)*0.33
+       + sin(dot(p,vec2(0.290,-0.210))+uT*2.05)*0.14 + sin(dot(p,vec2(-0.420,-0.360))+uT*2.90)*0.07;
+}
 void main(){
+  if(vSea<0.02 || vDepth<=0.0) discard;
   float d=distance(vW,uCam);
-  float rip=sin(vW.x*0.31+uT*1.2)*sin(vW.z*0.27-uT*0.9)*0.5+0.5;
-  float rip2=sin((vW.x+vW.z)*0.9+uT*2.1)*0.5+0.5;
-  vec3 deep=vec3(0.09,0.33,0.58), light=vec3(0.42,0.70,0.90);
-  vec3 c=mix(deep,light,rip*0.25+rip2*0.08+smoothstep(40.0,900.0,d)*0.45);
-  float edge=1.0-smoothstep(uR*0.86,uR*0.99,max(abs(vW.x),abs(vW.z)));
-  float a=mix(0.62,0.5,smoothstep(20.0,600.0,d))*edge;
-  gl_FragColor=vec4(c,a);
+  vec3 V=normalize(uCam-vW);
+  // vågornas lutning avtar med avståndet så att ytan inte flimrar mot horisonten
+  float amp=0.32*(1.0-smoothstep(60.0,900.0,d))+0.04;
+  vec2 p=vW.xz; float e=0.6;
+  vec3 n=normalize(vec3(-(wav(p+vec2(e,0.0))-wav(p-vec2(e,0.0)))/(2.0*e)*amp, 1.0, -(wav(p+vec2(0.0,e))-wav(p-vec2(0.0,e)))/(2.0*e)*amp));
+  if(uCam.y<vW.y) n=-n; // sett underifrån
+  float ndv=max(dot(n,V),0.0);
+  float fres=0.03+0.72*pow(1.0-ndv,5.0);
+  vec3 r=reflect(-V,n);
+  vec3 sky=mix(vec3(0.70,0.79,0.86),vec3(0.36,0.54,0.74),clamp(r.y*1.6,0.0,1.0));
+  float depth=vDepth;
+  vec3 shallow=vec3(0.33,0.60,0.60), deep=vec3(0.04,0.19,0.33);
+  vec3 body=mix(shallow,deep,1.0-exp(-depth*0.22));
+  vec3 col=mix(body,sky,fres);
+  float sunUp=smoothstep(-0.05,0.1,uSun.y);
+  col+=vec3(1.0,0.96,0.85)*pow(max(dot(r,uSun),0.0),160.0)*1.4*sunUp;
+  // skum och svall längs stranden
+  float foam=(1.0-smoothstep(0.04,0.5,depth))*(0.55+0.45*sin(uT*1.4+vW.x*0.23+vW.z*0.19));
+  col=mix(col,vec3(0.94,0.96,0.95),foam*0.75);
+  float a=mix(0.38,0.86,1.0-exp(-depth*0.35));
+  a=max(a,fres*0.95); a=max(a,foam*0.85);
+  a*=smoothstep(0.0,0.06,depth)*clamp(vSea,0.0,1.0);
+  a*=1.0-smoothstep(uR*1.25,uR*4.0,max(abs(vW.x),abs(vW.z)));
+  gl_FragColor=vec4(col,a);
 }`;
 function initScene() {
   init3();
@@ -884,10 +916,28 @@ function initScene() {
   overlayTex = new THREE.CanvasTexture(overlayCv); overlayTex.anisotropy = renderer.capabilities.getMaxAnisotropy(); U.uOver.value = overlayTex;
   const tm = new THREE.ShaderMaterial({ uniforms: U, vertexShader: TER_VS, fragmentShader: TER_FS, transparent: true, depthWrite: true, side: THREE.DoubleSide, extensions: { derivatives: true } });
   terrain = new THREE.Mesh(g, tm); terrain.renderOrder = 0; scene.add(terrain);
-  // forntida hav: en plan yta i strandnivå, dold där marken ligger högre
-  const wg = new THREE.PlaneGeometry(2 * R, 2 * R, 1, 1); wg.rotateX(-Math.PI / 2);
-  water = new THREE.Mesh(wg, new THREE.ShaderMaterial({ uniforms: U, vertexShader: WAT_VS, fragmentShader: WAT_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
-  water.renderOrder = 1; scene.add(water);
+  // forntida hav: ett rutnät i strandnivå med djup (strandnivå − mark) och SGU:s havsmask per punkt
+  const wmat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: WAT_VS, fragmentShader: WAT_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, extensions: { derivatives: true } });
+  const wgeo = new THREE.BufferGeometry(), wpos = new Float32Array(nx * ny * 3);
+  for (let k = 0; k < nx * ny; k++) { wpos[k * 3] = pos[k * 3]; wpos[k * 3 + 2] = pos[k * 3 + 2]; }
+  wgeo.setAttribute('position', new THREE.BufferAttribute(wpos, 3)); wgeo.setIndex(new THREE.BufferAttribute(idx, 1));
+  WAT.depth = new Float32Array(nx * ny); WAT.sea = new Float32Array(nx * ny);
+  wgeo.setAttribute('aDepth', new THREE.BufferAttribute(WAT.depth, 1)); wgeo.setAttribute('aSea', new THREE.BufferAttribute(WAT.sea, 1));
+  wgeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), R * 1.5);
+  water = new THREE.Group(); water.renderOrder = 1; scene.add(water);
+  WAT.inner = new THREE.Mesh(wgeo, wmat); WAT.inner.renderOrder = 1; WAT.inner.frustumCulled = false; water.add(WAT.inner);
+  // hav som fortsätter mot horisonten där områdets kant är öppet hav (ingen terräng finns där, därför tonas det ut)
+  const ring = []; const step = Math.max(1, Math.round((nx - 1) / 60));
+  const edge = []; for (let i = 0; i < nx; i += step) edge.push([i, 0]); for (let j = 0; j < ny; j += step) edge.push([nx - 1, j]); for (let i = nx - 1; i >= 0; i -= step) edge.push([i, ny - 1]); for (let j = ny - 1; j >= 0; j -= step) edge.push([0, j]);
+  const rpos = new Float32Array(edge.length * 2 * 3); WAT.ringSea = new Float32Array(edge.length * 2); WAT.ringDepth = new Float32Array(edge.length * 2).fill(40); WAT.ringNode = edge.map(([i, j]) => j * nx + i);
+  edge.forEach(([i, j], q) => { const k = j * nx + i, x = pos[k * 3], z = pos[k * 3 + 2]; rpos.set([x, 0, z], q * 6); rpos.set([x * 4, 0, z * 4], q * 6 + 3); });
+  const ridx = []; for (let q = 0; q < edge.length; q++) { const a = q * 2, b = a + 1, c = ((q + 1) % edge.length) * 2, d = c + 1; ridx.push(a, c, b, b, c, d); }
+  const rgeo = new THREE.BufferGeometry(); rgeo.setAttribute('position', new THREE.BufferAttribute(rpos, 3)); rgeo.setIndex(ridx);
+  rgeo.setAttribute('aDepth', new THREE.BufferAttribute(WAT.ringDepth, 1)); rgeo.setAttribute('aSea', new THREE.BufferAttribute(WAT.ringSea, 1));
+  WAT.ring = new THREE.Mesh(rgeo, wmat); WAT.ring.renderOrder = 1; WAT.ring.frustumCulled = false; water.add(WAT.ring);
+  // koppling rutnätspunkt → SGU-ruta (görs en gång)
+  WAT.cell = null;
+  if (S.strand) { const st = S.strand; WAT.cell = new Int32Array(nx * ny); for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const E = d.x0 + i * d.ds, N = d.y0 + j * d.ds; WAT.cell[j * nx + i] = clamp(Math.floor((N - st.y0) / st.gs), 0, st.ny - 1) * st.nx + clamp(Math.floor((E - st.x0) / st.gs), 0, st.nx - 1); } }
   pinGroup = new THREE.Group(); scene.add(pinGroup);
   buildPins(); drawOverlay(); buildMiniBase();
 }
@@ -999,6 +1049,52 @@ function updatePins() {
 // Minikarta
 // =====================================================================
 let hillCv, waterCv, miniR = store.get('miniR', 300);
+// Bakgrundskarta (Esri World Topographic Map / World Imagery, samma som i potentialmodellen).
+// Webbmercator-plattor läggs om till områdets SWEREF 99 TM-ruta med en affin transform – över några km är felet under en pixel.
+const BASE = { topo: null, foto: null, url: { topo: null, foto: null } };
+const BASE_SRC = { topo: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/', foto: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' };
+const MAP_STYLES = [['topo', 'Topo'], ['foto', 'Flygbild'], ['relief', 'Terräng']];
+let mapStyle = store.get('mapStyle', 'topo');
+function loadImg(url, cors, ms = 20000) {
+  return new Promise((res, rej) => { const im = new Image(); if (cors) im.crossOrigin = 'anonymous'; const t = setTimeout(() => rej(new Error('tidsgräns')), ms); im.onload = () => { clearTimeout(t); res(im); }; im.onerror = () => { clearTimeout(t); rej(new Error('bilden saknas')); }; im.src = url; });
+}
+function solve3(M, b) { // Cramers regel
+  const det = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const D = det(M); return [0, 1, 2].map(c => det(M.map((r, i) => r.map((v, j) => j === c ? b[i] : v))) / D);
+}
+async function buildBasemap(area, kind, onProg) {
+  const R = area.R, Sz = 1024, res = 2 * R / Sz, minE = area.E0 - R, maxE = area.E0 + R, minN = area.N0 - R, maxN = area.N0 + R;
+  const lat0 = GK.toGeo(area.E0, area.N0)[0];
+  const z = clamp(Math.round(Math.log2(156543.034 * Math.cos(lat0 * D2R) / res)), 10, 17), n = 2 ** z;
+  const merc = (E, N) => { const [la, lo] = GK.toGeo(E, N), r = la * D2R; return [(lo + 180) / 360 * n * 256, (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n * 256]; };
+  const c = [merc(minE, maxN), merc(maxE, maxN), merc(minE, minN), merc(maxE, minN)];
+  const tx0 = Math.floor(Math.min(...c.map(q => q[0])) / 256), tx1 = Math.floor(Math.max(...c.map(q => q[0])) / 256);
+  const ty0 = Math.floor(Math.min(...c.map(q => q[1])) / 256), ty1 = Math.floor(Math.max(...c.map(q => q[1])) / 256);
+  const U3 = c.slice(0, 3).map(q => [q[0] - tx0 * 256, q[1] - ty0 * 256, 1]);
+  const [a, cc, e] = solve3(U3, [0, 2 * R, 0]), [b, dd, f] = solve3(U3, [0, 0, 2 * R]);
+  const cv = document.createElement('canvas'); cv.width = cv.height = Sz; const x = cv.getContext('2d'), k = Sz / (2 * R);
+  x.fillStyle = '#d9d9d2'; x.fillRect(0, 0, Sz, Sz);
+  x.setTransform(k * a, k * b, k * cc, k * dd, k * e, k * f);
+  const jobs = []; for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) jobs.push([tx, ty]);
+  let ok = 0, tainted = false, done = 0;
+  const one = async ([tx, ty]) => {
+    const url = `${BASE_SRC[kind]}${z}/${ty}/${tx}`; let im = null;
+    try { im = await loadImg(url, true); } catch (e1) { try { im = await loadImg(url, false); tainted = true; } catch (e2) { } }
+    if (im) { x.drawImage(im, (tx - tx0) * 256, (ty - ty0) * 256, 256.6, 256.6); ok++; }
+    done++; onProg && onProg(done, jobs.length);
+  };
+  const q = jobs.slice(); await Promise.all(Array.from({ length: 6 }, async () => { while (q.length) { checkCancel(); await one(q.shift()); } }));
+  if (ok < jobs.length * 0.5) throw new Error(`bara ${ok} av ${jobs.length} kartplattor kom fram`);
+  let url = null; if (!tainted) { try { url = cv.toDataURL('image/jpeg', 0.82); } catch (e) { } }
+  return { cv, url };
+}
+async function canvasFromUrl(url) { const im = await loadImg(url, false, 10000); const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext('2d').drawImage(im, 0, 0); return c; }
+async function ensureBase(kind) {
+  if (kind === 'relief' || BASE[kind] || !S.area || S.demo) return;
+  try { const r = await buildBasemap(S.area, kind); BASE[kind] = r.cv; BASE.url[kind] = r.url; saveBase(); } catch (e) { toast('Bakgrundskartan kunde inte hämtas (' + e.message + '). Visar terrängskuggning.', true); }
+}
+async function saveBase() { if (S.demo) return; const d = await IDB.get('last'); if (d && d.area && d.area.E0 === S.area.E0 && d.area.N0 === S.area.N0) { d.base = { topo: BASE.url.topo, foto: BASE.url.foto }; await IDB.put('last', d); } }
+function resetBase() { BASE.topo = BASE.foto = null; BASE.url = { topo: null, foto: null }; }
 function buildMiniBase() {
   const d = S.dem; hillCv = document.createElement('canvas'); hillCv.width = d.nx; hillCv.height = d.ny;
   const x = hillCv.getContext('2d'), im = x.createImageData(d.nx, d.ny);
@@ -1014,7 +1110,7 @@ function drawWaterMask() {
   if (!waterCv) return; const d = S.dem, x = waterCv.getContext('2d'); x.clearRect(0, 0, d.nx, d.ny);
   const L = U.uL.value; if (!S.lay.hav || L < -500) return;
   const im = x.createImageData(d.nx, d.ny);
-  for (let j = 0; j < d.ny; j++) for (let i = 0; i < d.nx; i++) if (d.z[j * d.nx + i] < L) { const o = ((d.ny - 1 - j) * d.nx + i) * 4; im.data[o] = 60; im.data[o + 1] = 140; im.data[o + 2] = 215; im.data[o + 3] = 200; }
+  for (let j = 0; j < d.ny; j++) for (let i = 0; i < d.nx; i++) { const k = j * d.nx + i; if (d.z[k] < L && (!WAT.sea || WAT.sea[k] > 0)) { const o = ((d.ny - 1 - j) * d.nx + i) * 4; im.data[o] = 45; im.data[o + 1] = 125; im.data[o + 2] = 210; im.data[o + 3] = 175; } }
   x.putImageData(im, 0, 0);
 }
 function drawMini(az, hfov) {
@@ -1025,7 +1121,8 @@ function drawMini(az, hfov) {
   x.fillStyle = '#0e1513'; x.fillRect(0, 0, W, W);
   x.translate(c, c); x.rotate(-az * D2R); x.scale(k, k); x.translate(-(P.curE - (a.E0 - R)), -((a.N0 + R) - P.curN));
   x.imageSmoothingEnabled = true;
-  if (hillCv) x.drawImage(hillCv, 0, 0, 2 * R, 2 * R);
+  const base = mapStyle !== 'relief' ? BASE[mapStyle] : null;
+  if (base) x.drawImage(base, 0, 0, 2 * R, 2 * R); else if (hillCv) x.drawImage(hillCv, 0, 0, 2 * R, 2 * R);
   if (waterCv) x.drawImage(waterCv, 0, 0, 2 * R, 2 * R);
   x.drawImage(overlayCv, 0, 0, 2 * R, 2 * R);
   const r = 3.2 / k;
@@ -1043,7 +1140,7 @@ function drawMini(az, hfov) {
   x.fillStyle = 'rgba(11,18,16,.85)'; x.beginPath(); x.arc(Math.cos(na) * nr, Math.sin(na) * nr, 8 * dpr, 0, Math.PI * 2); x.fill();
   x.fillStyle = '#eef4f1'; x.fillText('N', Math.cos(na) * nr, Math.sin(na) * nr + 0.5);
   x.restore();
-  $('miniLbl').textContent = `${fmt(miniR)} m`;
+  const st = MAP_STYLES.find(m => m[0] === mapStyle); $('miniLbl').innerHTML = `${fmt(miniR)} m · ${st ? st[1] : ''} ▾${base ? '<br><span style="opacity:.7;font-size:9.5px">© Esri m.fl.</span>' : ''}`;
 }
 
 // =====================================================================
@@ -1061,7 +1158,7 @@ function init3() { if (_e) return true; if (typeof THREE === 'undefined') return
   _y = new THREE.Vector3(0, 1, 0);
   _v = new THREE.Vector3();
   _qa = new THREE.Quaternion();
-  _qy = new THREE.Quaternion(); U.uCam.value = new THREE.Vector3(); return true; }
+  _qy = new THREE.Quaternion(); U.uCam.value = new THREE.Vector3(); U.uSun.value = new THREE.Vector3(-0.3, 0.55, 0.78).normalize(); return true; }
 const screenAngle = () => (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
 function devQuat(q, a, b, g, o) { _e.set(b * D2R, a * D2R, -g * D2R, 'YXZ'); q.setFromEuler(_e); q.multiply(_q1); q.multiply(_q0.setFromAxisAngle(_zee, -o * D2R)); return q; }
 function azOf(q) { _v.set(0, 0, -1).applyQuaternion(q); return { az: (Math.atan2(_v.x, -_v.z) * R2D + 360) % 360, fy: _v.y }; }
@@ -1120,7 +1217,8 @@ async function enterView(mode) {
   $('setup').hidden = true; $('view').hidden = false; $('view').classList.toggle('desk', mode === 'desk');
   $('cam').hidden = mode !== 'ar'; $('cDemo').hidden = !S.demo;
   U.uDesk.value = mode === 'desk' ? 1 : 0;
-  initScene(); buildPeriodChips(); buildLayerChips(); setYear(S.year, true); onResize(); showPanel('sheet');
+  initScene(); lastSun = 0; if (!S.demo && mapStyle !== 'relief' && !BASE[mapStyle] && navigator.onLine !== false) ensureBase(mapStyle);
+  buildPeriodChips(); buildLayerChips(); setYear(S.year, true); onResize(); showPanel('sheet');
   $('bLock').textContent = P.lock && mode === 'ar' ? 'Släpp position' : 'Lås position'; $('bLock').hidden = mode !== 'ar';
   if (mode === 'desk') toast('Dra i bilden för att se dig om. Tryck i kartan för att flytta dig.');
   else setTimeout(() => { if (MODE === 'ar' && !P.have) toast('Väntar på GPS…'); }, 2500);
@@ -1150,6 +1248,20 @@ $('cam').addEventListener('loadedmetadata', onResize);
 
 // ---------- Bildloop ----------
 let loopOn = false, lastHud = 0, lastPins = 0, curAz = 0;
+function sunDir(lat, lon, date) {
+  const d = date / 86400000 + 2440587.5 - 2451545.0, g = (357.529 + 0.98560028 * d) * D2R, q = 280.459 + 0.98564736 * d;
+  const Ls = (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * D2R, ob = (23.439 - 0.00000036 * d) * D2R;
+  const ra = Math.atan2(Math.cos(ob) * Math.sin(Ls), Math.cos(Ls)), dec = Math.asin(Math.sin(ob) * Math.sin(Ls));
+  const gmst = ((18.697374558 + 24.06570982441908 * d) % 24 + 24) % 24, H = (gmst * 15 + lon) * D2R - ra, la = lat * D2R;
+  const el = Math.asin(Math.sin(la) * Math.sin(dec) + Math.cos(la) * Math.cos(dec) * Math.cos(H));
+  const az = Math.atan2(-Math.sin(H), Math.tan(dec) * Math.cos(la) - Math.sin(la) * Math.cos(H));
+  return { az, el };
+}
+let lastSun = 0;
+function updateSun() {
+  const ll = GK.toGeo(S.area.E0, S.area.N0), s = sunDir(ll[0], ll[1], Date.now()), el = Math.max(s.el, 4 * D2R);
+  U.uSun.value.set(Math.sin(s.az) * Math.cos(el), Math.sin(el) * (s.el < 0 ? 0.3 : 1), -Math.cos(s.az) * Math.cos(el)).normalize();
+}
 function camHeight() { return demAt(S.dem, P.curE, P.curN) + CAL.eye + CAL.hOff; }
 function frame(t) {
   if (!loopOn) return; requestAnimationFrame(frame);
@@ -1167,6 +1279,7 @@ function frame(t) {
   if (t - lastPins > 250) { lastPins = t; updatePins(); }
   camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); declutter();
   if (t - lastHud > 200) { lastHud = t; updateHud(); }
+  if (t - lastSun > 60000 || !lastSun) { lastSun = t || 1; updateSun(); }
   renderer.render(scene, camera);
 }
 function updateHud() {
@@ -1181,7 +1294,8 @@ function updateHud() {
   $('cElev').innerHTML = `<span>${fmt(zg, 1)} m ö.h.</span>`;
   const a = S.area, dc = Math.hypot(P.curE - a.E0, P.curN - a.N0), ce = $('cEdge');
   if (dc > a.R * 0.85) { ce.hidden = false; ce.querySelector('span').textContent = dc > a.R ? `${distTxt(dc - a.R)} utanför området` : 'Nära kanten av området'; } else ce.hidden = true;
-  const L = U.uL.value, under = S.lay.hav && L > -500 && camera.position.y < L;
+  const L = U.uL.value, kk = S.dem ? clamp(Math.round((P.curN - S.dem.y0) / S.dem.ds), 0, S.dem.ny - 1) * S.dem.nx + clamp(Math.round((P.curE - S.dem.x0) / S.dem.ds), 0, S.dem.nx - 1) : 0;
+  const under = S.lay.hav && L > -500 && camera.position.y < L && (!WAT.sea || WAT.sea[kk] > 0);
   $('under').hidden = !under; if (under) $('underTxt').textContent = `Du står ${fmt(L - camera.position.y + CAL.eye, 1)} m under dåtidens havsyta`;
   updateLevelTxt(zg);
   drawMini(curAz, 2 * Math.atan(Math.tan(vfov / 2 * D2R) * camera.aspect) * R2D);
@@ -1190,13 +1304,29 @@ function updateHud() {
 // =====================================================================
 // Tid och lager
 // =====================================================================
+// Djup och havsmask per punkt. Med SGU-data räknas bara ytor som SGU anger som hav/vatten det året (med en rutas marginal,
+// så att strandkanten följer höjdmodellen); utan SGU (egen nivå, exempel) visas allt under nivån.
+function updateWater() {
+  if (!WAT.depth || !S.dem) return;
+  const d = S.dem, L = U.uL.value, Y = S.year, st = S.strand, useSgu = !!(st && WAT.cell && S.manualL == null);
+  const nx = d.nx, ny = d.ny, z = d.z, dep = WAT.depth, sea = WAT.sea;
+  let seaCell = null;
+  if (useSgu) { seaCell = new Uint8Array(st.nx * st.ny); for (let k = 0; k < seaCell.length; k++) { const v = st.emerge[k]; seaCell[k] = isFinite(v) && v >= Y ? 1 : 0; }
+    const g = new Uint8Array(seaCell); for (let j = 0; j < st.ny; j++) for (let i = 0; i < st.nx; i++) { if (g[j * st.nx + i]) continue; for (let dj = -1; dj <= 1 && !seaCell[j * st.nx + i]; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < st.nx && jj < st.ny && g[jj * st.nx + ii]) { seaCell[j * st.nx + i] = 1; break; } } } }
+  for (let k = 0; k < nx * ny; k++) { dep[k] = L - z[k]; sea[k] = L < -500 ? 0 : useSgu ? seaCell[WAT.cell[k]] : 1; }
+  WAT.inner.geometry.attributes.aDepth.needsUpdate = true; WAT.inner.geometry.attributes.aSea.needsUpdate = true;
+  // yttre havet: bara där kanten är hav med minst 1,5 m djup
+  WAT.ringNode.forEach((k, q) => { const v = sea[k] && dep[k] > 1.5 ? 1 : 0; WAT.ringSea[q * 2] = v; WAT.ringSea[q * 2 + 1] = v; WAT.ringDepth[q * 2] = Math.max(dep[k], 0); });
+  WAT.ring.geometry.attributes.aSea.needsUpdate = true; WAT.ring.geometry.attributes.aDepth.needsUpdate = true;
+  scheduleWater();
+}
 function setYear(y, init) {
   S.year = y; const r = $('yr');
   const p0 = S.curve && S.curve.pts.length ? S.curve.pts[0][0] : -9500;
   r.min = Math.min(-9500, Math.floor((p0 - 500) / 500) * 500); r.max = 1900; r.value = y;
   store.set('year', y);
   const sh = shoreAt(y);
-  U.uL.value = sh ? sh.L : -999; water.position.y = sh ? sh.L : -999;
+  U.uL.value = sh ? sh.L : -999; water.position.y = sh ? sh.L : -999; updateWater();
   water.visible = !!sh && S.lay.hav; U.uHav.value = sh ? 1 : 0; U.uShore.value = S.lay.strand ? 1 : 0;
   $('yrTxt').textContent = fmtYear(y); $('perTxt').textContent = periodOf(y);
   document.querySelectorAll('#perChips button').forEach(b => { const p = PERIODS[+b.dataset.i]; b.classList.toggle('on', p ? y >= p.a && y < p.b : y >= 1850); });
@@ -1345,6 +1475,10 @@ function hitPin(x, y) {
   });
   return best;
 }
+$('miniLbl').addEventListener('click', () => {
+  const i = MAP_STYLES.findIndex(m => m[0] === mapStyle); mapStyle = MAP_STYLES[(i + 1) % MAP_STYLES.length][0]; store.set('mapStyle', mapStyle);
+  if (mapStyle !== 'relief' && !BASE[mapStyle]) { toast('Hämtar ' + MAP_STYLES.find(m => m[0] === mapStyle)[1].toLowerCase() + '…'); ensureBase(mapStyle); }
+});
 $('mini').addEventListener('click', e => {
   if (MODE === 'desk') {
     const r = $('mini').getBoundingClientRect(), dx = e.clientX - r.left - r.width / 2, dy = e.clientY - r.top - r.height / 2, k = miniR / (r.width / 2);
