@@ -580,29 +580,57 @@ function emergeAt(E, N) {
   return null;
 }
 
-// Strandförskjutningskurva för området: rutor som blev land ett visst århundrade ligger i median på dåtidens strandnivå.
+// Strandförskjutningskurva för området. För varje århundrade delas SGU-rutorna i hav och land, och strandnivån blir den höjd
+// som bäst skiljer dem åt (minst antal hav-rutor ovanför + land-rutor nedanför). Enstaka avvikande rutor – t.ex. kajer eller
+// branta stränder som SGU:s grövre höjdmodell (50 m) räknar som hav – väger då lite. Till sist görs kurvan fallande över tid
+// (viktad isoton regression), så att ett udda århundrade inte drar med sig resten.
+function pavDecreasing(pts) {
+  const bl = [];
+  for (const p of pts) {
+    bl.push({ v: -p[1], w: Math.max(1, p[2]), n: 1 });
+    while (bl.length > 1 && bl[bl.length - 2].v > bl[bl.length - 1].v) { const b = bl.pop(), a = bl.pop(), w = a.w + b.w; bl.push({ v: (a.v * a.w + b.v * b.w) / w, w, n: a.n + b.n }); }
+  }
+  let i = 0; bl.forEach(b => { for (let k = 0; k < b.n; k++) pts[i++][1] = -b.v; });
+}
 function buildCurve(st, dem) {
   if (!st || !dem) return null;
-  const bins = new Map(), above = []; let n = 0;
+  const cz = [], ce = [];
   for (let j = 0; j < st.ny; j++) for (let i = 0; i < st.nx; i++) {
-    const k = j * st.nx + i, E = st.x0 + (i + 0.5) * st.gs, N = st.y0 + (j + 0.5) * st.gs;
-    const z = demAt(dem, E, N); if (!isFinite(z)) continue;
-    const em = st.emerge[k];
-    if (isFinite(em)) { const b = Math.round(em / 100) * 100; if (!bins.has(b)) bins.set(b, []); bins.get(b).push(z); n++; } else above.push(z);
+    const z = demAt(dem, st.x0 + (i + 0.5) * st.gs, st.y0 + (j + 0.5) * st.gs); if (!isFinite(z)) continue;
+    cz.push(z); ce.push(st.emerge[j * st.nx + i]);
   }
-  const pts = [...bins.entries()].filter(([, a]) => a.length >= 2 || bins.size < 5).map(([b, a]) => [b, median(a), a.length]).sort((p, q) => p[0] - q[0]);
-  for (let i = pts.length - 2; i >= 0; i--) pts[i][1] = Math.max(pts[i][1], pts[i + 1][1]); // äldre strand ligger aldrig lägre än yngre
-  const cap = above.length > 0.03 * (n + above.length) ? quantile(above, 0.1) : null;
-  return { pts, cap, nCells: n, above: above.length };
+  const N = cz.length; if (!N) return null;
+  const ord = Array.from({ length: N }, (_, i) => i).sort((a, b) => cz[a] - cz[b]);
+  const zs = ord.map(i => cz[i]), es = ord.map(i => ce[i]);
+  let minEm = Infinity, nEver = 0; es.forEach(v => { if (isFinite(v)) { nEver++; minEm = Math.min(minEm, v); } });
+  const base = { nCells: N, above: N - nEver, minZ: zs[0], maxZ: zs[N - 1] };
+  if (!nEver) return Object.assign(base, { pts: [], seaUntil: null, allSeaUntil: null });
+  const pts = []; let seaUntil = null, allSeaUntil = null;
+  for (let Y = Math.floor(minEm / 100) * 100 - 100; Y <= 1900; Y += 100) {
+    let nSea = 0; for (let i = 0; i < N; i++) if (es[i] > Y) nSea++;
+    if (!nSea) continue;                       // havet låg utanför området
+    seaUntil = Y;
+    if (nSea === N) { allSeaUntil = Y; continue; } // hela området under vatten
+    let err = nSea, best = err, bk = 0;
+    for (let i = 0; i < N; i++) { err += es[i] > Y ? -1 : 1; if (err < best) { best = err; bk = i + 1; } }
+    const h = bk === 0 ? zs[0] - 0.5 : bk >= N ? zs[N - 1] + 0.5 : (zs[bk - 1] + zs[bk]) / 2;
+    pts.push([Y, h, Math.min(nSea, N - nSea), best / N]);
+  }
+  pavDecreasing(pts);
+  return Object.assign(base, { pts, seaUntil, allSeaUntil });
 }
 function shoreAt(Y) {
   if (S.manualL != null) return { L: S.manualL, note: 'egen nivå' };
-  const c = S.curve; if (!c || !c.pts.length) return null;
-  const p = c.pts, n = p.length;
+  const c = S.curve; if (!c) return null;
+  if (c.seaUntil === null) return null;                                         // aldrig hav i området
+  if (c.seaUntil !== undefined && Y > c.seaUntil + 50) return { L: -999, none: true, note: 'havet låg utanför området' };
+  const p = c.pts || [], n = p.length;
+  if (c.allSeaUntil != null && Y <= c.allSeaUntil) return { L: Math.max(c.maxZ + 1, n ? p[0][1] : -999), note: 'hela området under vatten' };
+  if (!n) return null;
   const slope = (a, b) => { const s = (p[b][1] - p[a][1]) / Math.max(1, p[b][0] - p[a][0]); return Math.min(s, -0.002); };
-  if (n === 1) { const L = p[0][1] + -0.005 * (Y - p[0][0]); return { L: c.cap != null ? Math.min(L, c.cap) : L, note: 'uppskattad' }; }
-  if (Y <= p[0][0]) { let L = p[0][1] + slope(0, Math.min(n - 1, 4)) * (Y - p[0][0]); if (c.cap != null) L = Math.min(L, Math.max(c.cap, p[0][1])); return { L, note: Y < p[0][0] - 150 ? 'utanför modellens spann i området' : '' }; }
-  if (Y >= p[n - 1][0]) { const L = p[n - 1][1] + slope(Math.max(0, n - 5), n - 1) * (Y - p[n - 1][0]); return { L, note: Y > p[n - 1][0] + 150 ? 'havet låg utanför området' : '' }; }
+  if (n === 1) return { L: p[0][1] + -0.005 * (Y - p[0][0]), note: 'uppskattad' };
+  if (Y <= p[0][0]) { let L = p[0][1] + slope(0, Math.min(n - 1, 4)) * (Y - p[0][0]); if (c.maxZ != null) L = Math.min(L, c.maxZ + 1); return { L, note: Y < p[0][0] - 150 ? 'utanför modellens spann i området' : '' }; }
+  if (Y >= p[n - 1][0]) { const L = p[n - 1][1] + slope(Math.max(0, n - 5), n - 1) * (Y - p[n - 1][0]); return { L, note: '' }; }
   for (let i = 0; i < n - 1; i++) if (Y >= p[i][0] && Y <= p[i + 1][0]) { const t = (Y - p[i][0]) / (p[i + 1][0] - p[i][0]); return { L: p[i][1] + t * (p[i + 1][1] - p[i][1]), note: '' }; }
   return null;
 }
@@ -713,9 +741,9 @@ function renderCurve() {
   const line = p.map(q => `${X(q[0]).toFixed(1)},${Y(q[1]).toFixed(1)}`).join(' ');
   const area = `${X(p[0][0]).toFixed(1)},${Y(yMin)} ${line} ${X(p[p.length - 1][0]).toFixed(1)},${Y(yMin)}`;
   const cur = shoreAt(S.year);
-  const mark = cur && S.year >= x0 ? `<line x1="${X(S.year)}" x2="${X(S.year)}" y1="${mt}" y2="${H - mb}" stroke="#fff0c9" stroke-dasharray="3 3" opacity=".7"/><circle cx="${X(S.year)}" cy="${Y(clamp(cur.L, yMin, yMax))}" r="4" fill="#fff0c9"/>` : '';
+  const mark = cur && !cur.none && S.year >= x0 ? `<line x1="${X(S.year)}" x2="${X(S.year)}" y1="${mt}" y2="${H - mb}" stroke="#fff0c9" stroke-dasharray="3 3" opacity=".7"/><circle cx="${X(S.year)}" cy="${Y(clamp(cur.L, yMin, yMax))}" r="4" fill="#fff0c9"/>` : '';
   $('curveSvg').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Strandförskjutningskurva"><text x="${ml}" y="${mt - 1}" fill="#80908a" font-size="9.5" font-family="IBM Plex Mono,monospace">m ö.h.</text>${g}<polygon points="${area}" fill="rgba(87,169,232,.18)"/><polyline points="${line}" fill="none" stroke="#57a9e8" stroke-width="2" stroke-linejoin="round"/>${mark}</svg>`;
-  $('curveCap').textContent = `Strandlinjens höjd i området enligt SGU:s modell och höjdmodellen (${fmt(c.nCells)} rutor, median per århundrade).${c.cap != null ? ` Högsta kustlinjen ca ${fmt(c.cap)} m ö.h.` : ''}`;
+  $('curveCap').textContent = `Strandlinjens höjd i området, framräknad från SGU:s modell och höjdmodellen (${fmt(c.nCells)} rutor).${c.seaUntil != null && c.seaUntil < 1800 ? ` Efter ca ${fmtYear(c.seaUntil + 100)} låg havet utanför området.` : ''}`;
 }
 async function fetchAll() {
   if (!S.area) return;
@@ -838,10 +866,10 @@ let renderer, scene, camera, terrain, water, overlayTex, overlayCv, pinGroup;
 const WAT = { depth: null, sea: null, cell: null, inner: null, ring: null };
 const PINS = [];
 const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 }, uSun: { value: null } };
-const TER_VS = `varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
-void main(){ vUv=uv; vH=position.y; vN=normal; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
+const TER_VS = `attribute float aSea; varying float vSea; varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
+void main(){ vSea=aSea; vUv=uv; vH=position.y; vN=normal; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
 const TER_FS = `uniform sampler2D uOver; uniform float uL; uniform float uShore; uniform float uCont; uniform float uDesk; uniform float uR; uniform vec3 uCam; uniform float uHav;
-varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
+varying float vSea; varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
 vec4 over(vec4 t, vec4 b){ float a=t.a+b.a*(1.0-t.a); vec3 c=(t.rgb*t.a+b.rgb*b.a*(1.0-t.a))/max(a,1e-4); return vec4(c,a); }
 void main(){
   vec4 col=vec4(0.0);
@@ -849,7 +877,7 @@ void main(){
   if(uDesk>0.5){ vec3 n=normalize(vN); if(n.y<0.0) n=-n; vec3 l=normalize(vec3(-0.5,0.55,0.45)); float sh=clamp(dot(n,l),0.0,1.0)*0.85+0.2; vec3 g=mix(vec3(0.36,0.45,0.31),vec3(0.62,0.60,0.47),smoothstep(0.0,60.0,vH))*sh; g=mix(g,vec3(0.76,0.81,0.82),smoothstep(250.0,1400.0,dist)*0.55); col=vec4(g,1.0); }
   vec4 ov=texture2D(uOver,vUv); ov.a*=1.0-smoothstep(700.0,1400.0,dist)*0.6; col=over(ov,col);
   if(uCont>0.0){ float f=vH/uCont; float w=fwidth(f); float ln=1.0-smoothstep(0.0,w*1.4,abs(fract(f+0.5)-0.5)); float fade=1.0-smoothstep(120.0,500.0,dist); col=over(vec4(1.0,1.0,1.0,0.55*ln*fade),col); }
-  if(uShore>0.5 && uHav>0.5){ float dh=vH-uL; if(dh>0.0 && dh<1.2) col=over(vec4(0.10,0.09,0.06,0.28*(1.0-dh/1.2)),col); float w=fwidth(vH); float s=1.0-smoothstep(max(w*1.2,0.06),max(w*3.0,0.3),abs(dh)); col=over(vec4(1.0,0.94,0.79,0.9*s),col); }
+  if(uShore>0.5 && uHav>0.5){ float m=smoothstep(0.2,0.8,vSea); float dh=vH-uL; if(dh>0.0 && dh<1.2) col=over(vec4(0.10,0.09,0.06,0.28*(1.0-dh/1.2)*m),col); float w=fwidth(vH); float s=1.0-smoothstep(max(w*1.2,0.06),max(w*3.0,0.3),abs(dh)); col=over(vec4(1.0,0.94,0.79,0.9*s*m),col); }
   float e=1.0-smoothstep(uR*0.9,uR,max(abs(vW.x),abs(vW.z)));
   col.a*=e;
   gl_FragColor=col;
@@ -921,7 +949,8 @@ function initScene() {
   const wgeo = new THREE.BufferGeometry(), wpos = new Float32Array(nx * ny * 3);
   for (let k = 0; k < nx * ny; k++) { wpos[k * 3] = pos[k * 3]; wpos[k * 3 + 2] = pos[k * 3 + 2]; }
   wgeo.setAttribute('position', new THREE.BufferAttribute(wpos, 3)); wgeo.setIndex(new THREE.BufferAttribute(idx, 1));
-  WAT.depth = new Float32Array(nx * ny); WAT.sea = new Float32Array(nx * ny);
+  WAT.depth = new Float32Array(nx * ny); WAT.sea = new Float32Array(nx * ny).fill(1);
+  g.setAttribute('aSea', new THREE.BufferAttribute(WAT.sea, 1));
   wgeo.setAttribute('aDepth', new THREE.BufferAttribute(WAT.depth, 1)); wgeo.setAttribute('aSea', new THREE.BufferAttribute(WAT.sea, 1));
   wgeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), R * 1.5);
   water = new THREE.Group(); water.renderOrder = 1; scene.add(water);
@@ -1314,7 +1343,7 @@ function updateWater() {
   if (useSgu) { seaCell = new Uint8Array(st.nx * st.ny); for (let k = 0; k < seaCell.length; k++) { const v = st.emerge[k]; seaCell[k] = isFinite(v) && v >= Y ? 1 : 0; }
     const g = new Uint8Array(seaCell); for (let j = 0; j < st.ny; j++) for (let i = 0; i < st.nx; i++) { if (g[j * st.nx + i]) continue; for (let dj = -1; dj <= 1 && !seaCell[j * st.nx + i]; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < st.nx && jj < st.ny && g[jj * st.nx + ii]) { seaCell[j * st.nx + i] = 1; break; } } } }
   for (let k = 0; k < nx * ny; k++) { dep[k] = L - z[k]; sea[k] = L < -500 ? 0 : useSgu ? seaCell[WAT.cell[k]] : 1; }
-  WAT.inner.geometry.attributes.aDepth.needsUpdate = true; WAT.inner.geometry.attributes.aSea.needsUpdate = true;
+  WAT.inner.geometry.attributes.aDepth.needsUpdate = true; WAT.inner.geometry.attributes.aSea.needsUpdate = true; if (terrain) terrain.geometry.attributes.aSea.needsUpdate = true;
   // yttre havet: bara där kanten är hav med minst 1,5 m djup
   WAT.ringNode.forEach((k, q) => { const v = sea[k] && dep[k] > 1.5 ? 1 : 0; WAT.ringSea[q * 2] = v; WAT.ringSea[q * 2 + 1] = v; WAT.ringDepth[q * 2] = Math.max(dep[k], 0); });
   WAT.ring.geometry.attributes.aSea.needsUpdate = true; WAT.ring.geometry.attributes.aDepth.needsUpdate = true;
@@ -1326,8 +1355,9 @@ function setYear(y, init) {
   r.min = Math.min(-9500, Math.floor((p0 - 500) / 500) * 500); r.max = 1900; r.value = y;
   store.set('year', y);
   const sh = shoreAt(y);
-  U.uL.value = sh ? sh.L : -999; water.position.y = sh ? sh.L : -999; updateWater();
-  water.visible = !!sh && S.lay.hav; U.uHav.value = sh ? 1 : 0; U.uShore.value = S.lay.strand ? 1 : 0;
+  const lvl = sh && !sh.none ? sh.L : -999;
+  U.uL.value = lvl; water.position.y = lvl; updateWater();
+  water.visible = lvl > -500 && S.lay.hav; U.uHav.value = lvl > -500 ? 1 : 0; U.uShore.value = S.lay.strand ? 1 : 0;
   $('yrTxt').textContent = fmtYear(y); $('perTxt').textContent = periodOf(y);
   document.querySelectorAll('#perChips button').forEach(b => { const p = PERIODS[+b.dataset.i]; b.classList.toggle('on', p ? y >= p.a && y < p.b : y >= 1850); });
   scheduleWater(); updateLevelTxt();
@@ -1341,7 +1371,8 @@ function updateLevelTxt(zg) {
   const sh = shoreAt(S.year);
   const em = emergeAt(P.curE, P.curN);
   const emTxt = em ? (em.above ? 'över högsta kustlinjen' : em.y != null ? `blev land ca ${fmtYear(em.y)}` : '') : '';
-  if (!sh) { el.innerHTML = S.curve ? 'Inget forntida hav här' : 'Ingen strandkurva<br><span>ange nivå under Kalibrera</span>'; return; }
+  if (!sh) { el.innerHTML = S.curve ? `Inget forntida hav här${emTxt ? '<br>' + emTxt : ''}` : 'Ingen strandkurva<br><span>ange nivå under Kalibrera</span>'; return; }
+  if (sh.none) { el.innerHTML = `Havet låg utanför området<br>${emTxt || 'ingen vattenyta att visa'}`; return; }
   const diff = zg - sh.L;
   el.innerHTML = `Havsytan <b>${fmt(sh.L, 1)} m</b>${sh.note ? ` <span>(${esc(sh.note)})</span>` : ''}<br>${diff >= 0 ? `du står ${fmt(diff, 1)} m över` : `${fmt(-diff, 1)} m vatten här`}${emTxt ? ` · ${emTxt}` : ''}`;
 }
