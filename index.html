@@ -225,7 +225,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <button class="btn wide" id="bDesk" type="button" disabled>Testa vid skrivbordet</button>
       <button class="btn wide ghost" id="bDemo" type="button">Visa exempel</button>
     </div>
-    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret.</p>
+    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30b</span></p>
   </div>
 </main>
 
@@ -430,8 +430,8 @@ const LST_DEM = 'https://ext-geodata-raster.lansstyrelsen.se/arcgis/rest/service
 let LST_MODE = null; // 'fetch' eller 'jsonp', avgörs vid första lyckade anropet
 async function lstGet(url, timeout) {
   if (LST_MODE !== 'jsonp') {
-    try { const r = await getJSON(url, timeout); if (r && r.error) throw Object.assign(new Error(r.error.message || 'fel från tjänsten'), { server: true }); LST_MODE = 'fetch'; return r; }
-    catch (e) { if (LST_MODE === 'fetch' || e.server) throw e; }
+    try { const r = await getJSON(url, timeout); if (r && r.error) throw new Error(r.error.message || 'fel från tjänsten'); LST_MODE = 'fetch'; return r; }
+    catch (e) { if (LST_MODE === 'fetch') throw e; }
   }
   const r = await jsonp(url, timeout); LST_MODE = 'jsonp'; return r;
 }
@@ -526,6 +526,26 @@ function demAt(d, E, N) {
 // Samma metod som i potentialmodellen: UTFGrid per tidssteg, vart tusende år och sedan hundraårssteg,
 // så att varje ruta får året då den senast var hav (= blev land).
 const SGU_STRAND = 'https://api.sgu.se/oppnadata/strandforskjutningsmodell/';
+let SGU_MODE = 0; // 0 = lagrets egen adress, 1 = tjänstens gemensamma adress
+async function sguGet(lay, qs, timeout) {
+  const urls = [`${SGU_STRAND}${lay}/wms?${qs}`, `${SGU_STRAND}wms?${qs}`];
+  let lastErr;
+  for (const m of SGU_MODE ? [1, 0] : [0, 1]) {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeout);
+    try {
+      const r = await fetch(urls[m], { signal: ctl.signal });
+      const txt = await r.text();
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      try { const j = JSON.parse(txt); if (!j.grid) throw new Error('oväntat svar'); SGU_MODE = m; return j; }
+      catch (pe) {
+        const msg = (txt.match(/<ServiceException[^>]*>([\s\S]*?)<\/ServiceException>/i) || [])[1];
+        throw new Error(msg ? 'SGU: ' + msg.replace(/\s+/g, ' ').trim().slice(0, 140) : /Capabilities/i.test(txt.slice(0, 400)) ? 'SGU svarade med tjänstebeskrivning i stället för data' : 'svaret var inte data (' + txt.slice(0, 60).replace(/\s+/g, ' ') + '…)');
+      }
+    } catch (e) { lastErr = e.name === 'AbortError' ? new Error('tidsgräns') : e instanceof TypeError ? new Error('ingen kontakt med SGU') : e; }
+    finally { clearTimeout(t); }
+  }
+  throw lastErr;
+}
 const strandLayer = (bp) => bp < 1000 ? 'bp1-900' : bp >= 13000 ? 'bp13000-13500' : `bp${Math.floor(bp / 1000) * 1000}-${Math.floor(bp / 1000) * 1000 + 900}`;
 function utfDecode(ch) { let c = ch.charCodeAt(0); if (c >= 93) c--; if (c >= 35) c--; return c - 32; }
 async function fetchStrand(b, onProg) {
@@ -536,10 +556,10 @@ async function fetchStrand(b, onProg) {
   const step = async (bp) => {
     if (cache.has(bp)) return cache.get(bp);
     const lay = strandLayer(bp), year = 1950 - bp;
-    const url = `${SGU_STRAND}${lay}/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${lay}&STYLES=&SRS=EPSG:3006&BBOX=${bbox}&WIDTH=${nx * 4}&HEIGHT=${ny * 4}&FORMAT=${encodeURIComponent('application/json;type=utfgrid')}&CQL_FILTER=${encodeURIComponent('year=' + year)}`;
+    const qs = `SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${lay}&STYLES=&SRS=EPSG:3006&BBOX=${bbox}&WIDTH=${nx * 4}&HEIGHT=${ny * 4}&FORMAT=${encodeURIComponent('application/json;type=utfgrid')}&CQL_FILTER=${encodeURIComponent('year=' + year)}`;
     checkCancel();
     let r;
-    for (let a = 0; ; a++) { try { r = await getJSON(url, 30000); break; } catch (e) { checkCancel(); if (++fails >= 4 || a >= 1) throw new Error(`${e.message} (steg ${fmt(bp)} BP)`); await sleep(1000); } }
+    for (let a = 0; ; a++) { try { r = await sguGet(lay, qs, 30000); break; } catch (e) { checkCancel(); if (++fails >= 6 || a >= 2) throw new Error(`${e.message} (steg ${fmt(bp)} BP)`); await sleep(1500 * (a + 1)); } }
     const water = new Uint8Array(N), rows = r.grid || [], gh = rows.length;
     for (let gj = 0; gj < gh; gj++) {
       const row = rows[gj], j = Math.floor((gh - 1 - gj) * ny / gh);
@@ -552,7 +572,7 @@ async function fetchStrand(b, onProg) {
     done++; onProg && onProg(done);
     const res = { water }; cache.set(bp, res); return res;
   };
-  const pool = async (bps) => { const out = []; for (let i = 0; i < bps.length; i += 6) out.push(...await Promise.all(bps.slice(i, i + 6).map(step))); return out; };
+  const pool = async (bps) => { const out = []; for (let i = 0; i < bps.length; i += 3) out.push(...await Promise.all(bps.slice(i, i + 3).map(step))); return out; };
   const coarse = []; for (let bp = 1000; bp <= 13000; bp += 1000) coarse.push(bp);
   const cm = await pool(coarse);
   const lastWater = new Int32Array(N).fill(-1);
@@ -749,6 +769,7 @@ async function fetchAll() {
   if (!S.area) return;
   const b = bboxOf(S.area), R = S.area.R, ds = R <= 600 ? 5 : R <= 1000 ? 10 : 15;
   FETCH.cancel = false; FETCH.on = true; renderSetup();
+  const prev = !S.demo && S.dem ? { dem: S.dem, strand: S.strand } : null;
   statList.length = 0; S.demo = false; S.dem = null; S.strand = null; S.curve = null;
   const t0 = Date.now(); const tick = setInterval(renderStat, 1000);
   stat('dem', 'pending', 'Höjdmodell', 'Hämtar Lantmäteriets höjdmodell…', t0);
@@ -775,7 +796,11 @@ async function fetchAll() {
   const [rd, rs, rm] = await Promise.allSettled([demJob, sguJob, mapJob]);
   clearInterval(tick);
   const cancelled = FETCH.cancel; FETCH.on = false; FETCH.cancel = false;
-  if (rd.status === 'fulfilled') {
+  let keptDem = false;
+  if (rd.status === 'fulfilled' && prev && prev.dem && prev.dem.src.startsWith('Lantm') && !rd.value.src.startsWith('Lantm')) { S.dem = prev.dem; keptDem = true; stat('dem', 'ok', 'Höjdmodell', `Lantmäteriet svarade inte nu – använder den tidigare hämtade höjdmodellen (rutnät ${S.dem.ds} m)`); }
+  else if (rd.status !== 'fulfilled' && prev && prev.dem) { S.dem = prev.dem; keptDem = true; stat('dem', 'ok', 'Höjdmodell', 'Hämtningen misslyckades – använder den tidigare hämtade höjdmodellen'); }
+  if (keptDem) { }
+  else if (rd.status === 'fulfilled') {
     S.dem = rd.value; let mn = Infinity, mx = -Infinity; S.dem.z.forEach(v => { mn = Math.min(mn, v); mx = Math.max(mx, v); });
     stat('dem', 'ok', 'Höjdmodell', `${S.dem.src} · rutnät ${S.dem.ds} m · ${fmt(mn)}–${fmt(mx)} m ö.h.`);
   } else stat('dem', 'err', 'Höjdmodell', cancelled ? 'Avbruten.' : `Gick inte att hämta (${rd.reason && rd.reason.message}). Kontrollera nätet och försök igen.`);
@@ -784,7 +809,8 @@ async function fetchAll() {
     if (S.curve && S.curve.pts.length) { const p = S.curve.pts; stat('strand', 'ok', 'Strandförskjutning', `Blev land ${fmtYear(p[0][0])}–${fmtYear(p[p.length - 1][0])} · ${S.strand.steps} tidssteg`); }
     else stat('strand', 'ok', 'Strandförskjutning', 'Området ligger ovanför högsta kustlinjen. Inget forntida hav att visa. Du kan ange en egen vattennivå i kameravyn.');
   } else if (rs.status === 'fulfilled') { S.strand = rs.value; stat('strand', 'ok', 'Strandförskjutning', 'Hämtad, men kurvan kräver höjdmodellen.'); }
-  else stat('strand', 'err', 'Strandförskjutning', cancelled ? 'Avbruten. Du kan ange havsnivån själv under Kalibrera.' : `SGU svarade inte (${rs.reason && rs.reason.message}). Du kan ange havsnivån själv under Kalibrera i kameravyn.`);
+  else if (prev && prev.strand && S.dem) { S.strand = prev.strand; S.curve = buildCurve(S.strand, S.dem); stat('strand', 'ok', 'Strandförskjutning', `SGU svarade inte nu (${rs.reason && rs.reason.message}) – använder den tidigare hämtade strandförskjutningen`); }
+  else stat('strand', 'err', 'Strandförskjutning', cancelled ? 'Avbruten. Du kan ange havsnivån själv under Kalibrera.' : `SGU svarade inte (${rs.reason && rs.reason.message}). Försök igen om en stund, eller ange havsnivån själv under Kalibrera i kameravyn.`);
   if (rm.status === 'fulfilled') stat('karta', 'ok', 'Bakgrundskarta', `Esri topografisk karta${BASE.foto ? ' och flygbild' : ''}${BASE.url.topo ? ' · sparas för användning utan nät' : ' · kan inte sparas, kräver nät'}`);
   else stat('karta', 'err', 'Bakgrundskarta', cancelled ? 'Avbruten.' : `Kunde inte hämtas (${rm.reason && rm.reason.message}). Minikartan visar terrängskuggning i stället.`);
   S.manualL = null;
@@ -798,7 +824,7 @@ async function diagnose() {
   const tests = [
     ['Lantmäteriets höjdmodell (direkt)', () => getJSON(`${LST_DEM}?geometry=${E},${N}&geometryType=esriGeometryPoint&returnFirstValueOnly=true&f=json`, 15000).then(r => { if (r.error) throw new Error(r.error.message); return `${fmt(parseFloat(r.samples[0].value), 1)} m ö.h. vid områdets mitt`; })],
     ['Lantmäteriets höjdmodell (JSONP)', () => jsonp(`${LST_DEM}?geometry=${E},${N}&geometryType=esriGeometryPoint&returnFirstValueOnly=true&f=json`, 15000).then(r => `${fmt(parseFloat(r.samples[0].value), 1)} m ö.h.`)],
-    ['SGU strandförskjutning', () => getJSON(`${SGU_STRAND}bp5000-5900/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=bp5000-5900&STYLES=&SRS=EPSG:3006&BBOX=${E - 200},${N - 200},${E + 200},${N + 200}&WIDTH=16&HEIGHT=16&FORMAT=${encodeURIComponent('application/json;type=utfgrid')}&CQL_FILTER=${encodeURIComponent('year=-3050')}`, 20000).then(r => { if (!r.grid) throw new Error('oväntat svar'); return 'svarar'; })],
+    ['SGU strandförskjutning', () => sguGet('bp5000-5900', `SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=bp5000-5900&STYLES=&SRS=EPSG:3006&BBOX=${E - 200},${N - 200},${E + 200},${N + 200}&WIDTH=16&HEIGHT=16&FORMAT=${encodeURIComponent('application/json;type=utfgrid')}&CQL_FILTER=${encodeURIComponent('year=-3050')}`, 20000).then(() => SGU_MODE ? 'svarar (via tjänstens gemensamma adress)' : 'svarar')],
     ['AWS höjdplattor (reserv)', () => { const n = 2 ** 13, fx = Math.floor((lon + 180) / 360 * n), r = lat * D2R, fy = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return loadTerrTile(13, fx + '/' + fy).then(() => 'svarar'); }],
     ['Esri bakgrundskarta', () => { const n = 2 ** 14, fx = Math.floor((lon + 180) / 360 * n), r = lat * D2R, fy = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return loadImg(`${BASE_SRC.topo}14/${fy}/${fx}`, true, 15000).then(() => 'svarar'); }],
     ['Open-Meteo höjd (reserv)', () => getJSON(`https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(5)}&longitude=${lon.toFixed(5)}`, 15000).then(r => `${fmt(r.elevation[0], 0)} m ö.h.`)],
