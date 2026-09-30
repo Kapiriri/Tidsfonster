@@ -225,7 +225,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <button class="btn wide" id="bDesk" type="button" disabled>Testa vid skrivbordet</button>
       <button class="btn wide ghost" id="bDemo" type="button">Visa exempel</button>
     </div>
-    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30g</span></p>
+    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30h</span></p>
   </div>
 </main>
 
@@ -279,6 +279,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
     <div class="crow"><span>Höjdjustering</span><div class="stepper"><button type="button" data-c="h" data-d="-0.5">−</button><output id="oH">0,0 m</output><button type="button" data-c="h" data-d="0.5">+</button></div></div>
     <details class="more"><summary>Fler inställningar</summary>
     <div class="crow"><span>Ögonhöjd</span><div class="stepper"><button type="button" data-c="eye" data-d="-0.1">−</button><output id="oEye">1,6 m</output><button type="button" data-c="eye" data-d="0.1">+</button></div></div>
+    <div class="crow"><span>Höjdkurvor</span><div class="seg" id="segCont"><button type="button" data-v="1">1 m</button><button type="button" data-v="2">2 m</button><button type="button" data-v="5">5 m</button></div></div>
     <div class="crow"><span>Vatten syns inom</span><div class="seg" id="segWd"><button type="button" data-v="150">150 m</button><button type="button" data-v="300">300 m</button><button type="button" data-v="700">700 m</button><button type="button" data-v="0">Allt</button></div></div>
     <div class="crow"><span>Bildvinkel</span><div class="stepper"><button type="button" data-c="fov" data-d="-1">−</button><output id="oFov">67°</output><button type="button" data-c="fov" data-d="1">+</button></div></div>
     <div class="crow"><span>Havsyta</span><div class="stepper"><div class="seg" id="segLvl"><button type="button" data-v="sgu">SGU</button><button type="button" data-v="egen">Egen</button></div><button type="button" data-c="lvl" data-d="-0.5" class="lvlb">−</button><output id="oLvl" class="lvlb">–</output><button type="button" data-c="lvl" data-d="0.5" class="lvlb">+</button></div></div>
@@ -393,8 +394,8 @@ const S = {
   lay: Object.assign({ hav: true, strand: true, pot: true, zon: true, lamn: true, egen: true, kurv: false }, store.get('lay', {})),
   demo: false, savedAt: null,
 };
-const CAL = Object.assign({ userOff: 0, eye: 1.6, hOff: 0, fov: 67.3, lockCompass: false, waterD: 300 }, store.get('cal', {}));
-const saveCal = () => store.set('cal', { userOff: CAL.userOff, eye: CAL.eye, hOff: CAL.hOff, fov: CAL.fov, lockCompass: CAL.lockCompass, waterD: CAL.waterD });
+const CAL = Object.assign({ userOff: 0, eye: 1.6, hOff: 0, fov: 67.3, lockCompass: false, waterD: 300, cont: 2 }, store.get('cal', {}));
+const saveCal = () => store.set('cal', { userOff: CAL.userOff, eye: CAL.eye, hOff: CAL.hOff, fov: CAL.fov, lockCompass: CAL.lockCompass, waterD: CAL.waterD, cont: CAL.cont });
 let radius = store.get('radius', 1000);
 
 // =====================================================================
@@ -892,10 +893,10 @@ function loadDemo() {
 let renderer, scene, camera, terrain, water, overlayTex, overlayCv, pinGroup;
 const WAT = { depth: null, sea: null, cell: null, inner: null, ring: null };
 const PINS = [];
-const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 }, uSun: { value: null }, uMaxD: { value: 300 }, uWater: { value: 1 } };
+const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 }, uSun: { value: null }, uMaxD: { value: 300 }, uWater: { value: 1 }, uUnder: { value: 0 } };
 const TER_VS = `attribute float aSea; varying float vSea; varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
 void main(){ vSea=aSea; vUv=uv; vH=position.y; vN=normal; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
-const TER_FS = `uniform sampler2D uOver; uniform float uL; uniform float uShore; uniform float uCont; uniform float uDesk; uniform float uR; uniform vec3 uCam; uniform float uHav; uniform float uWater; uniform float uMaxD;
+const TER_FS = `uniform sampler2D uOver; uniform float uL; uniform float uShore; uniform float uCont; uniform float uDesk; uniform float uR; uniform vec3 uCam; uniform float uHav; uniform float uWater; uniform float uMaxD; uniform float uUnder;
 varying float vSea; varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
 vec4 over(vec4 t, vec4 b){ float a=t.a+b.a*(1.0-t.a); vec3 c=(t.rgb*t.a+b.rgb*b.a*(1.0-t.a))/max(a,1e-4); return vec4(c,a); }
 void main(){
@@ -903,8 +904,8 @@ void main(){
   float dist=distance(vW,uCam);
   if(uDesk>0.5){ vec3 n=normalize(vN); if(n.y<0.0) n=-n; vec3 l=normalize(vec3(-0.5,0.55,0.45)); float sh=clamp(dot(n,l),0.0,1.0)*0.85+0.2; vec3 g=mix(vec3(0.36,0.45,0.31),vec3(0.62,0.60,0.47),smoothstep(0.0,60.0,vH))*sh; g=mix(g,vec3(0.76,0.81,0.82),smoothstep(250.0,1400.0,dist)*0.55); col=vec4(g,1.0); }
   vec4 ov=texture2D(uOver,vUv); ov.a*=1.0-smoothstep(700.0,1400.0,dist)*0.6; col=over(ov,col);
-  if(uCont>0.0){ float f=vH/uCont; float w=fwidth(f); float ln=1.0-smoothstep(0.0,w*1.4,abs(fract(f+0.5)-0.5)); float fade=1.0-smoothstep(120.0,500.0,dist); col=over(vec4(1.0,1.0,1.0,0.55*ln*fade),col); }
-  if(uWater>0.5 && uHav>0.5 && vH<uL){ float wd=uL-vH; float fd=uMaxD>0.0?1.0-smoothstep(uMaxD*0.35,uMaxD,length(vW.xz-uCam.xz)):1.0; float ws=smoothstep(0.2,0.8,vSea)*fd; vec3 bed=mix(vec3(0.07,0.30,0.40),vec3(0.02,0.11,0.24),1.0-exp(-wd*0.35)); col=over(vec4(bed,(0.42+0.45*(1.0-exp(-wd*0.4)))*smoothstep(0.0,0.25,wd)*ws),col); }
+  if(uCont>0.0){ float f=vH/uCont; float w=max(fwidth(f),1e-4); float px=abs(fract(f+0.5)-0.5)/w; float idx=1.0-step(0.5,abs(mod(floor(f+0.5),5.0))); float cw=mix(0.9,1.6,idx); float core=1.0-smoothstep(cw,cw+0.9,px); float halo=1.0-smoothstep(cw+0.9,cw+2.6,px); float fade=(1.0-smoothstep(180.0,450.0,dist))*(1.0-smoothstep(0.22,0.45,w)); vec3 lc=(uHav>0.5 && vH<uL)?vec3(0.62,0.85,1.0):vec3(1.0); col=over(vec4(0.0,0.0,0.0,0.42*halo*fade),col); col=over(vec4(lc,0.95*core*fade),col); }
+  if(uWater>0.5 && uHav>0.5 && uUnder<0.5 && vH<uL){ float wd=uL-vH; float fd=uMaxD>0.0?1.0-smoothstep(uMaxD*0.35,uMaxD,length(vW.xz-uCam.xz)):1.0; float ws=smoothstep(0.2,0.8,vSea)*fd; vec3 bed=mix(vec3(0.07,0.30,0.40),vec3(0.02,0.11,0.24),1.0-exp(-wd*0.35)); col=over(vec4(bed,(0.42+0.45*(1.0-exp(-wd*0.4)))*smoothstep(0.0,0.25,wd)*ws),col); }
   if(uShore>0.5 && uHav>0.5){ float m=smoothstep(0.2,0.8,vSea)*(1.0-smoothstep(60.0,220.0,dist)); float dh=vH-uL; vec3 nn=normalize(vN); if(nn.y<0.0) nn=-nn; float slope=max(length(nn.xz)/max(nn.y,0.2),0.004); float hd=dh/slope; if(hd>0.0 && hd<3.5) col=over(vec4(0.08,0.07,0.05,0.2*(1.0-hd/3.5)*m),col); float w=fwidth(vH); float s=1.0-smoothstep(w*0.7,w*1.8,abs(dh)); col=over(vec4(0.96,0.97,0.95,0.6*s*m),col); }
   float e=1.0-smoothstep(uR*0.9,uR,max(abs(vW.x),abs(vW.z)));
   col.a*=e;
@@ -1351,7 +1352,7 @@ function frame(t) {
   U.uCam.value.copy(camera.position); U.uT.value = t / 1000;
   curAz = azOf(camera.quaternion).az;
   const ready = MODE !== 'ar' || P.have || P.lock;
-  terrain.visible = ready; pinGroup.visible = ready; water.visible = ready && S.lay.hav && U.uL.value > -500;
+  terrain.visible = ready; pinGroup.visible = ready; water.visible = ready && S.lay.hav && U.uL.value > -500 && U.uUnder.value < 0.5;
   if (t - lastPins > 250) { lastPins = t; updatePins(); }
   camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); declutter();
   if (t - lastHud > 200) { lastHud = t; updateHud(); }
@@ -1372,7 +1373,8 @@ function updateHud() {
   if (dc > a.R * 0.85) { ce.hidden = false; ce.querySelector('span').textContent = dc > a.R ? `${distTxt(dc - a.R)} utanför området` : 'Nära kanten av området'; } else ce.hidden = true;
   const L = U.uL.value, kk = S.dem ? clamp(Math.round((P.curN - S.dem.y0) / S.dem.ds), 0, S.dem.ny - 1) * S.dem.nx + clamp(Math.round((P.curE - S.dem.x0) / S.dem.ds), 0, S.dem.nx - 1) : 0;
   const under = S.lay.hav && L > -500 && camera.position.y < L && (!WAT.sea || WAT.sea[kk] > 0);
-  $('under').hidden = !under; if (under) $('underTxt').textContent = `Du står ${fmt(L - camera.position.y + CAL.eye, 1)} m under dåtidens havsyta`;
+  U.uUnder.value = under ? 1 : 0; $('under').hidden = !under;
+  if (under) { const dep = L - camera.position.y + CAL.eye, o = clamp(0.38 + dep * 0.06, 0.38, 0.8); $('under').style.background = `linear-gradient(180deg, rgba(40,105,150,${(o * 0.8).toFixed(2)}), rgba(8,45,85,${o.toFixed(2)}))`; $('underTxt').textContent = `Du står ${fmt(dep, 1)} m under dåtidens havsyta`; }
   updateLevelTxt(zg);
   drawMini(curAz, 2 * Math.atan(Math.tan(vfov / 2 * D2R) * camera.aspect) * R2D);
 }
@@ -1433,7 +1435,7 @@ const LAYERS = [
 function buildLayerChips() {
   const has = { pot: S.feats.classes.length, zon: S.feats.zones.length || S.feats.study.length, lamn: S.feats.lamn.length, egen: S.feats.egen.length, hav: 1, strand: 1, kurv: 1 };
   $('layChips').innerHTML = LAYERS.filter(l => has[l.k]).map(l => `<button type="button" data-k="${l.k}" class="${S.lay[l.k] ? 'on' : ''}" aria-pressed="${!!S.lay[l.k]}"><i style="background:${l.c}"></i>${l.n}</button>`).join('');
-  U.uCont.value = S.lay.kurv ? 2.5 : 0;
+  U.uCont.value = S.lay.kurv ? CAL.cont : 0;
 }
 $('perChips').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -1444,7 +1446,7 @@ $('layChips').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   const k = b.dataset.k; S.lay[k] = !S.lay[k]; store.set('lay', S.lay);
   b.classList.toggle('on', S.lay[k]); b.setAttribute('aria-pressed', S.lay[k]);
-  if (k === 'kurv') U.uCont.value = S.lay.kurv ? 2.5 : 0;
+  if (k === 'kurv') U.uCont.value = S.lay.kurv ? CAL.cont : 0;
   if (k === 'hav' || k === 'strand') setYear(S.year, true);
   if (k === 'pot' || k === 'zon' || k === 'lamn' || k === 'egen') drawOverlay();
   lastPins = 0;
@@ -1492,6 +1494,7 @@ function renderCal() {
   $('oH').textContent = `${CAL.hOff >= 0 ? '+' : ''}${fmt(CAL.hOff, 1)} m`;
   $('oEye').textContent = `${fmt(CAL.eye, 1)} m`; $('oFov').textContent = `${fmt(CAL.fov, 0)}°`;
   document.querySelectorAll('#segComp button').forEach(b => b.classList.toggle('on', (+b.dataset.v === 1) === !!CAL.lockCompass));
+  document.querySelectorAll('#segCont button').forEach(b => b.classList.toggle('on', +b.dataset.v === CAL.cont));
   document.querySelectorAll('#segWd button').forEach(b => b.classList.toggle('on', +b.dataset.v === (CAL.waterD || 0)));
   const own = S.manualL != null;
   document.querySelectorAll('#segLvl button').forEach(b => b.classList.toggle('on', (b.dataset.v === 'egen') === own));
@@ -1508,6 +1511,7 @@ $('calib').addEventListener('click', e => {
   if (b.dataset.c === 'lvl') { S.manualL = Math.round((S.manualL + d) * 10) / 10; setYear(S.year); }
   saveCal(); renderCal();
 });
+$('segCont').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; CAL.cont = +b.dataset.v; saveCal(); if (S.lay.kurv) U.uCont.value = CAL.cont; renderCal(); });
 $('segWd').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; CAL.waterD = +b.dataset.v; saveCal(); applyWaterD(); renderCal(); });
 $('segComp').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; CAL.lockCompass = b.dataset.v === '1'; saveCal(); renderCal(); });
 $('segLvl').addEventListener('click', e => {
