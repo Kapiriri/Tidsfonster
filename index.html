@@ -225,7 +225,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <button class="btn wide" id="bDesk" type="button" disabled>Testa vid skrivbordet</button>
       <button class="btn wide ghost" id="bDemo" type="button">Visa exempel</button>
     </div>
-    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30d</span></p>
+    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30e</span></p>
   </div>
 </main>
 
@@ -1236,7 +1236,7 @@ function onOri(e) {
 }
 function onGeo(p) {
   const [E, N] = GK.toGrid(p.coords.latitude, p.coords.longitude);
-  const acc = p.coords.accuracy; P.last = Date.now();
+  const acc = p.coords.accuracy; P.last = Date.now(); P.err = null;
   if (P.lock) { P.acc = acc; return; }
   if (!P.have || (P.acc != null && acc < P.acc * 0.5)) { P.E = E; P.N = N; if (!P.have) { P.curE = E; P.curN = N; } P.have = true; P.acc = acc; return; }
   P.acc = acc;
@@ -1251,11 +1251,12 @@ function startGeo() {
   clearInterval(P.poll);
   P.poll = setInterval(() => { if (MODE === 'ar' && !P.lock && Date.now() - (P.last || 0) > 8000) navigator.geolocation.getCurrentPosition(onGeo, onGeoErr, { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }); }, 8000);
 }
-function onGeoErr(e) { if (MODE === 'ar' && !P.have) toast(e.code === 1 ? 'Platsåtkomst nekades för kameravyn. Tillåt plats för webbläsaren (Inställningar → Integritet → Platstjänster) och ladda om.' : 'Ingen GPS-position ännu. Gå ut i det fria en stund, eller lås positionen under Kalibrera.', true); }
+function onGeoErr(e) {
+  P.err = e.code === 1 ? 'nekad' : e.code === 2 ? 'ingen signal' : e.code === 3 ? 'tidsgräns' : 'fel'; if (MODE === 'ar' && !P.have) toast(e.code === 1 ? 'Platsåtkomst nekades för kameravyn. Tillåt plats för webbläsaren (Inställningar → Integritet → Platstjänster) och ladda om.' : 'Ingen GPS-position ännu. Gå ut i det fria en stund, eller lås positionen under Kalibrera.', true); }
 async function startAR() {
   if (!S.dem) return;
   if (!init3()) { toast('3D-delen kunde inte laddas (cdnjs.cloudflare.com blockeras eller saknar nät). Ladda om sidan med nätanslutning.', true); return; }
-  C.n = 0; C.cx = 1; C.sy = 0; C.off = 0; P.have = false; P.lock = false; P.acc = null; P.last = 0;
+  C.n = 0; C.cx = 1; C.sy = 0; C.off = 0; P.have = false; P.lock = false; P.acc = null; P.last = 0; P.err = null;
   P.E = P.curE = S.area.E0; P.N = P.curN = S.area.N0;
   startGeo(); // måste ske direkt i knapptrycket – annars visar vissa webbläsare aldrig platsfrågan
   try {
@@ -1354,7 +1355,7 @@ function updateHud() {
   const g = $('cGps');
   if (MODE === 'desk') { g.className = 'chip'; g.innerHTML = '<span>Skrivbordsläge</span>'; }
   else if (P.lock) { g.className = 'chip warn'; g.innerHTML = '<i class="dot"></i><span>Position låst</span>'; }
-  else if (!P.have) { g.className = 'chip err'; g.innerHTML = '<i class="dot"></i><span>Väntar på GPS – tryck här</span>'; }
+  else if (!P.have) { g.className = 'chip err'; g.innerHTML = `<i class="dot"></i><span>${P.err === 'nekad' ? 'GPS nekad – se inställningar' : P.err === 'ingen signal' ? 'GPS: ingen signal – tryck här' : P.err === 'tidsgräns' ? 'GPS svarar inte – tryck här' : 'Väntar på GPS – tryck här'}</span>`; }
   else { g.className = 'chip ' + (P.acc <= 6 ? 'ok' : P.acc <= 15 ? 'warn' : 'err'); g.innerHTML = `<i class="dot"></i><span>GPS ±${fmt(P.acc)} m${P.acc > 25 ? ' – osäkert' : ''}</span>`; }
   const comp = MODE === 'ar' && C.src === 'ios' && C.acc != null && C.acc > 25 ? ' ⚠' : '';
   $('cHead').innerHTML = `<span>${fmt(curAz)}° ${dirName(curAz)}${comp}</span>`;
