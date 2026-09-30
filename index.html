@@ -225,7 +225,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <button class="btn wide" id="bDesk" type="button" disabled>Testa vid skrivbordet</button>
       <button class="btn wide ghost" id="bDemo" type="button">Visa exempel</button>
     </div>
-    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30c</span></p>
+    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30d</span></p>
   </div>
 </main>
 
@@ -238,7 +238,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 
   <div class="hud-top">
     <button class="chip" id="bExit" type="button" aria-label="Tillbaka till start">✕</button>
-    <span class="chip" id="cGps"><i class="dot"></i><span>GPS –</span></span>
+    <button class="chip" id="cGps" type="button" aria-label="Sök GPS-position igen"><i class="dot"></i><span>GPS –</span></button>
     <span class="chip" id="cHead"><span>–°</span></span>
     <span class="chip" id="cElev"><span>– m ö.h.</span></span>
     <span class="chip warn" id="cEdge" hidden><i class="dot"></i><span></span></span>
@@ -1236,16 +1236,28 @@ function onOri(e) {
 }
 function onGeo(p) {
   const [E, N] = GK.toGrid(p.coords.latitude, p.coords.longitude);
-  P.acc = p.coords.accuracy;
-  if (P.lock) return;
-  if (!P.have) { P.E = E; P.N = N; P.curE = E; P.curN = N; P.have = true; return; }
+  const acc = p.coords.accuracy; P.last = Date.now();
+  if (P.lock) { P.acc = acc; return; }
+  if (!P.have || (P.acc != null && acc < P.acc * 0.5)) { P.E = E; P.N = N; if (!P.have) { P.curE = E; P.curN = N; } P.have = true; P.acc = acc; return; }
+  P.acc = acc;
   const k = P.acc <= 5 ? 0.5 : P.acc <= 12 ? 0.3 : 0.15;
   P.E += (E - P.E) * k; P.N += (N - P.N) * k;
+}
+function startGeo() {
+  if (!navigator.geolocation) { toast('Webbläsaren saknar platstjänster.', true); return; }
+  if (P.watch != null) navigator.geolocation.clearWatch(P.watch);
+  P.watch = navigator.geolocation.watchPosition(onGeo, onGeoErr, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
+  navigator.geolocation.getCurrentPosition(onGeo, () => { }, { enableHighAccuracy: false, maximumAge: 60000, timeout: 15000 });
+  clearInterval(P.poll);
+  P.poll = setInterval(() => { if (MODE === 'ar' && !P.lock && Date.now() - (P.last || 0) > 8000) navigator.geolocation.getCurrentPosition(onGeo, onGeoErr, { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }); }, 8000);
 }
 function onGeoErr(e) { if (MODE === 'ar' && !P.have) toast(e.code === 1 ? 'Platsåtkomst nekades för kameravyn. Tillåt plats för webbläsaren (Inställningar → Integritet → Platstjänster) och ladda om.' : 'Ingen GPS-position ännu. Gå ut i det fria en stund, eller lås positionen under Kalibrera.', true); }
 async function startAR() {
   if (!S.dem) return;
   if (!init3()) { toast('3D-delen kunde inte laddas (cdnjs.cloudflare.com blockeras eller saknar nät). Ladda om sidan med nätanslutning.', true); return; }
+  C.n = 0; C.cx = 1; C.sy = 0; C.off = 0; P.have = false; P.lock = false; P.acc = null; P.last = 0;
+  P.E = P.curE = S.area.E0; P.N = P.curN = S.area.N0;
+  startGeo(); // måste ske direkt i knapptrycket – annars visar vissa webbläsare aldrig platsfrågan
   try {
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       const r = await DeviceOrientationEvent.requestPermission(); if (r !== 'granted') throw new Error('orient');
@@ -1256,11 +1268,8 @@ async function startAR() {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
     const v = $('cam'); v.srcObject = stream; await v.play().catch(() => { });
   } catch (e) { toast('Kameran gick inte att starta: ' + (e.name === 'NotAllowedError' ? 'åtkomst nekades' : e.message), true); return; }
-  C.n = 0; C.cx = 1; C.sy = 0; C.off = 0; P.have = false; P.lock = false; P.acc = null;
-  P.E = P.curE = S.area.E0; P.N = P.curN = S.area.N0;
   window.addEventListener('deviceorientation', onOri, true);
   if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', onOri, true);
-  if (navigator.geolocation) P.watch = navigator.geolocation.watchPosition(onGeo, onGeoErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
   try { if ('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); } catch (e) { }
   enterView('ar');
 }
@@ -1284,7 +1293,7 @@ async function enterView(mode) {
 function exitView() {
   MODE = null; loopOn = false;
   window.removeEventListener('deviceorientation', onOri, true); window.removeEventListener('deviceorientationabsolute', onOri, true);
-  if (P.watch != null) { navigator.geolocation.clearWatch(P.watch); P.watch = null; }
+  if (P.watch != null) { navigator.geolocation.clearWatch(P.watch); P.watch = null; } clearInterval(P.poll);
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   try { wake && wake.release(); } catch (e) { } wake = null;
   $('view').hidden = true; $('setup').hidden = false; renderSetup();
@@ -1345,7 +1354,7 @@ function updateHud() {
   const g = $('cGps');
   if (MODE === 'desk') { g.className = 'chip'; g.innerHTML = '<span>Skrivbordsläge</span>'; }
   else if (P.lock) { g.className = 'chip warn'; g.innerHTML = '<i class="dot"></i><span>Position låst</span>'; }
-  else if (!P.have) { g.className = 'chip err'; g.innerHTML = '<i class="dot"></i><span>Väntar på GPS – inga lager visas ännu</span>'; }
+  else if (!P.have) { g.className = 'chip err'; g.innerHTML = '<i class="dot"></i><span>Väntar på GPS – tryck här</span>'; }
   else { g.className = 'chip ' + (P.acc <= 6 ? 'ok' : P.acc <= 15 ? 'warn' : 'err'); g.innerHTML = `<i class="dot"></i><span>GPS ±${fmt(P.acc)} m${P.acc > 25 ? ' – osäkert' : ''}</span>`; }
   const comp = MODE === 'ar' && C.src === 'ios' && C.acc != null && C.acc > 25 ? ' ⚠' : '';
   $('cHead').innerHTML = `<span>${fmt(curAz)}° ${dirName(curAz)}${comp}</span>`;
@@ -1514,6 +1523,7 @@ $('bCalDone').addEventListener('click', () => {
 $('bCal').addEventListener('click', openCal);
 $('bLock').addEventListener('click', () => { P.lock = !P.lock; if (!P.lock) P.have = false; $('bLock').textContent = P.lock ? 'Släpp position' : 'Lås position'; toast(P.lock ? 'Positionen är låst. Bra när du står still och GPS:en fladdrar.' : 'Följer GPS igen.'); });
 $('bExit').addEventListener('click', exitView);
+$('cGps').addEventListener('click', () => { if (MODE !== 'ar') return; if (P.lock) { P.lock = false; P.have = false; $('bLock').textContent = 'Lås position'; } startGeo(); toast('Söker position… Tillåt platsåtkomst om webbläsaren frågar.'); });
 
 // ---------- Pekning i bilden ----------
 const drag = { on: false, x: 0, y: 0, x0: 0, y0: 0, moved: false };
