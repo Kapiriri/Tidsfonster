@@ -98,6 +98,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,label:focus-within
 button.chip{min-height:32px}
 #mini{position:absolute;right:12px;top:calc(env(safe-area-inset-top,0px) + 8px);width:132px;height:132px;border-radius:50%;border:1px solid var(--line-2);background:var(--glass);box-shadow:0 4px 18px rgba(0,0,0,.35)}
 #miniLbl{border:0;background:transparent;padding:4px 0;min-height:30px;line-height:1.25;position:absolute;right:12px;top:calc(env(safe-area-inset-top,0px) + 142px);width:132px;text-align:center;font:500 11px 'IBM Plex Mono',monospace;color:var(--text);text-shadow:0 1px 3px #000;z-index:2}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 75% 70% at 50% 48%,rgba(0,0,0,0) 55%,rgba(6,14,18,.62) 100%);opacity:0;transition:opacity .7s ease}
+#vig.show{opacity:1}
+#ttl{position:absolute;left:16px;right:16px;top:30%;text-align:center;pointer-events:none;opacity:0;transform:translateY(10px);transition:opacity .9s ease,transform .9s ease;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.65),0 1px 3px rgba(0,0,0,.8)}
+#ttl.show{opacity:1;transform:none}
+#ttl b{display:block;font:600 30px/1.15 'IBM Plex Sans',sans-serif;letter-spacing:-.01em;text-wrap:balance}
+#ttl span{display:block;margin-top:6px;font:500 14px 'IBM Plex Mono',monospace;opacity:.92}
+.slrow{display:flex;gap:10px;align-items:center}
+.play{flex:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--line-2);background:rgba(255,255,255,.08);font-size:15px;line-height:1}
+.play.on{background:var(--shore);color:#0b1210;border-color:var(--shore)}
 #cross{position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;pointer-events:none;opacity:.8}
 #cross::before,#cross::after{content:"";position:absolute;background:#fff;box-shadow:0 0 2px rgba(0,0,0,.8)}
 #cross::before{left:13px;top:0;width:2px;height:28px} #cross::after{top:13px;left:0;height:2px;width:28px}
@@ -225,7 +234,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <button class="btn wide" id="bDesk" type="button" disabled>Testa vid skrivbordet</button>
       <button class="btn wide ghost" id="bDemo" type="button">Visa exempel</button>
     </div>
-    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30h</span></p>
+    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30j</span></p>
   </div>
 </main>
 
@@ -233,7 +242,9 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 <div id="view" hidden>
   <video id="cam" playsinline muted autoplay></video>
   <canvas id="gl"></canvas>
+  <div id="vig"></div>
   <div id="under" hidden><div id="underTxt"></div></div>
+  <div id="ttl" aria-live="polite"></div>
   <div id="cross"></div>
 
   <div class="hud-top">
@@ -254,7 +265,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <div class="y"><b id="yrTxt">–</b><span id="perTxt"></span></div>
       <div class="l" id="lvlTxt"></div>
     </div>
-    <input type="range" id="yr" min="-9500" max="1900" step="50" aria-label="År">
+    <div class="slrow"><button class="play" id="bPlay" type="button" aria-label="Spela upp tiden">▶</button><input type="range" id="yr" min="-9500" max="1900" step="50" aria-label="År"></div>
     <div class="fold">
       <div class="chips" id="perChips" role="group" aria-label="Perioder"></div>
     </div>
@@ -891,12 +902,12 @@ function loadDemo() {
 // 3D-scen
 // =====================================================================
 let renderer, scene, camera, terrain, water, overlayTex, overlayCv, pinGroup;
-const WAT = { depth: null, sea: null, cell: null, inner: null, ring: null };
+const WAT = { sea: null, cell: null, inner: null, ring: null };
 const PINS = [];
-const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 }, uSun: { value: null }, uMaxD: { value: 300 }, uWater: { value: 1 }, uUnder: { value: 0 } };
+const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 }, uSun: { value: null }, uMaxD: { value: 300 }, uWater: { value: 1 }, uUnder: { value: 0 }, uSky: { value: null }, uExpo: { value: 1 } };
 const TER_VS = `attribute float aSea; varying float vSea; varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
 void main(){ vSea=aSea; vUv=uv; vH=position.y; vN=normal; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
-const TER_FS = `uniform sampler2D uOver; uniform float uL; uniform float uShore; uniform float uCont; uniform float uDesk; uniform float uR; uniform vec3 uCam; uniform float uHav; uniform float uWater; uniform float uMaxD; uniform float uUnder;
+const TER_FS = `uniform sampler2D uOver; uniform float uL; uniform float uShore; uniform float uCont; uniform float uDesk; uniform float uR; uniform vec3 uCam; uniform float uHav; uniform float uWater; uniform float uMaxD; uniform float uUnder; uniform float uExpo;
 varying float vSea; varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
 vec4 over(vec4 t, vec4 b){ float a=t.a+b.a*(1.0-t.a); vec3 c=(t.rgb*t.a+b.rgb*b.a*(1.0-t.a))/max(a,1e-4); return vec4(c,a); }
 void main(){
@@ -905,22 +916,22 @@ void main(){
   if(uDesk>0.5){ vec3 n=normalize(vN); if(n.y<0.0) n=-n; vec3 l=normalize(vec3(-0.5,0.55,0.45)); float sh=clamp(dot(n,l),0.0,1.0)*0.85+0.2; vec3 g=mix(vec3(0.36,0.45,0.31),vec3(0.62,0.60,0.47),smoothstep(0.0,60.0,vH))*sh; g=mix(g,vec3(0.76,0.81,0.82),smoothstep(250.0,1400.0,dist)*0.55); col=vec4(g,1.0); }
   vec4 ov=texture2D(uOver,vUv); ov.a*=1.0-smoothstep(700.0,1400.0,dist)*0.6; col=over(ov,col);
   if(uCont>0.0){ float f=vH/uCont; float w=max(fwidth(f),1e-4); float px=abs(fract(f+0.5)-0.5)/w; float idx=1.0-step(0.5,abs(mod(floor(f+0.5),5.0))); float cw=mix(0.9,1.6,idx); float core=1.0-smoothstep(cw,cw+0.9,px); float halo=1.0-smoothstep(cw+0.9,cw+2.6,px); float fade=(1.0-smoothstep(180.0,450.0,dist))*(1.0-smoothstep(0.22,0.45,w)); vec3 lc=(uHav>0.5 && vH<uL)?vec3(0.62,0.85,1.0):vec3(1.0); col=over(vec4(0.0,0.0,0.0,0.42*halo*fade),col); col=over(vec4(lc,0.95*core*fade),col); }
-  if(uWater>0.5 && uHav>0.5 && uUnder<0.5 && vH<uL){ float wd=uL-vH; float fd=uMaxD>0.0?1.0-smoothstep(uMaxD*0.35,uMaxD,length(vW.xz-uCam.xz)):1.0; float ws=smoothstep(0.2,0.8,vSea)*fd; vec3 bed=mix(vec3(0.07,0.30,0.40),vec3(0.02,0.11,0.24),1.0-exp(-wd*0.35)); col=over(vec4(bed,(0.42+0.45*(1.0-exp(-wd*0.4)))*smoothstep(0.0,0.25,wd)*ws),col); }
+  if(uWater>0.5 && uHav>0.5 && uUnder<0.5 && vH<uL){ float wd=uL-vH; float fd=uMaxD>0.0?1.0-smoothstep(uMaxD*0.35,uMaxD,length(vW.xz-uCam.xz)):1.0; float ws=smoothstep(0.2,0.8,vSea)*fd; vec3 bed=mix(vec3(0.07,0.30,0.40),vec3(0.02,0.11,0.24),1.0-exp(-wd*0.35))*mix(0.8,1.15,(clamp(uExpo,0.55,1.2)-0.55)/0.65); col=over(vec4(bed,(0.42+0.45*(1.0-exp(-wd*0.4)))*smoothstep(0.0,0.025,wd)*ws),col); }
   if(uShore>0.5 && uHav>0.5){ float m=smoothstep(0.2,0.8,vSea)*(1.0-smoothstep(60.0,220.0,dist)); float dh=vH-uL; vec3 nn=normalize(vN); if(nn.y<0.0) nn=-nn; float slope=max(length(nn.xz)/max(nn.y,0.2),0.004); float hd=dh/slope; if(hd>0.0 && hd<3.5) col=over(vec4(0.08,0.07,0.05,0.2*(1.0-hd/3.5)*m),col); float w=fwidth(vH); float s=1.0-smoothstep(w*0.7,w*1.8,abs(dh)); col=over(vec4(0.96,0.97,0.95,0.6*s*m),col); }
   float e=1.0-smoothstep(uR*0.9,uR,max(abs(vW.x),abs(vW.z)));
   col.a*=e;
   gl_FragColor=col;
 }`;
-const WAT_VS = `attribute float aDepth; attribute float aSea; varying float vDepth; varying float vSea; varying vec3 vW;
-void main(){ vDepth=aDepth; vSea=aSea; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
-const WAT_FS = `uniform float uT; uniform vec3 uCam; uniform float uR; uniform vec3 uSun; uniform float uMaxD;
-varying float vDepth; varying float vSea; varying vec3 vW;
+const WAT_VS = `uniform float uL; attribute float aZ; attribute float aSea; attribute float aSlope; varying float vDepth; varying float vSea; varying float vSlope; varying vec3 vW;
+void main(){ vDepth=uL-aZ; vSea=aSea; vSlope=aSlope; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
+const WAT_FS = `uniform float uT; uniform vec3 uCam; uniform float uR; uniform vec3 uSun; uniform float uMaxD; uniform vec3 uSky; uniform float uExpo;
+varying float vDepth; varying float vSea; varying float vSlope; varying vec3 vW;
 // Oregelbundna vågor: brus i två skalor som driver med vinden, plus en lång dyning. Detaljer tonas bort på avstånd.
 float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
   return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),u.x),mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),u.x),u.y); }
 float wav(vec2 p, float d){
-  float nearW=1.0-smoothstep(20.0,80.0,d), midW=1.0-smoothstep(50.0,240.0,d);
+  float nearW=1.0-smoothstep(15.0,60.0,d), midW=1.0-smoothstep(35.0,150.0,d);
   float h=sin(dot(p,vec2(0.085,0.040))+uT*0.8)*0.45;
   h+=(noise(p*0.18+vec2(uT*0.25,uT*0.12))-0.5)*0.9*midW;
   h+=(noise(p*0.55-vec2(uT*0.45,-uT*0.30))-0.5)*0.45*nearW;
@@ -931,25 +942,35 @@ void main(){
   if(vSea<0.02 || vDepth<=0.0) discard;
   float d=distance(vW,uCam), dh=length(vW.xz-uCam.xz);
   vec3 V=normalize(uCam-vW);
-  float amp=0.55*(1.0-smoothstep(15.0,220.0,d))+0.03;
+  float amp=0.55*(1.0-smoothstep(12.0,150.0,d))+0.02;
   vec2 p=vW.xz; float e=0.35;
   vec3 n=normalize(vec3(-(wav(p+vec2(e,0.0),d)-wav(p-vec2(e,0.0),d))/(2.0*e)*amp, 1.0, -(wav(p+vec2(0.0,e),d)-wav(p-vec2(0.0,e),d))/(2.0*e)*amp));
-  if(uCam.y<vW.y) n=-n; // sett underifrån
+  if(uCam.y<vW.y) n=-n;
   float ndv=max(dot(n,V),0.0);
-  float fres=0.02+0.55*pow(1.0-ndv,5.0);
+  float fres=0.02+0.58*pow(1.0-ndv,5.0);
   vec3 r=reflect(-V,n);
-  vec3 sky=mix(vec3(0.46,0.58,0.70),vec3(0.20,0.36,0.56),clamp(r.y*1.6,0.0,1.0));
-  float depth=vDepth;
+  // himlen som speglas tas från kamerabilden (ljusare nära horisonten, mörkare uppåt)
+  vec3 skyH=uSky*0.95, skyZ=uSky*vec3(0.62,0.70,0.82);
+  vec3 sky=mix(skyH,skyZ,clamp(r.y*1.6,0.0,1.0));
+  float depth=vDepth, ex=clamp(uExpo,0.55,1.2);
   vec3 shallow=vec3(0.09,0.32,0.37), deep=vec3(0.015,0.085,0.18);
-  vec3 body=mix(shallow,deep,1.0-exp(-depth*0.30));
+  vec3 body=mix(shallow,deep,1.0-exp(-depth*0.30))*mix(0.8,1.15,(ex-0.55)/0.65);
+  // grund sandbotten skymtar igenom närmast stranden
+  body=mix(body,vec3(0.42,0.46,0.36)*ex,exp(-depth*3.5)*0.35);
   vec3 col=mix(body,sky,fres);
   float sunUp=smoothstep(-0.05,0.1,uSun.y);
-  col+=vec3(1.0,0.96,0.86)*pow(max(dot(r,uSun),0.0),260.0)*1.5*sunUp*(1.0-smoothstep(150.0,600.0,d));
-  float foam=(1.0-smoothstep(0.03,0.2,depth))*(0.5+0.5*sin(uT*1.3+vW.x*0.31+vW.z*0.27))*(1.0-smoothstep(25.0,90.0,d));
-  col=mix(col,vec3(0.90,0.93,0.92),foam*0.5);
-  float a=mix(0.55,0.90,1.0-exp(-depth*0.45));
-  a=max(a,fres*0.85); a=max(a,foam*0.5);
-  a*=smoothstep(0.0,0.35,depth)*clamp(vSea,0.0,1.0);
+  col+=vec3(1.0,0.96,0.86)*pow(max(dot(r,uSun),0.0),260.0)*1.5*sunUp*(1.0-smoothstep(150.0,600.0,d))*clamp(ex,0.6,1.1);
+  // bränningar: skumränder som rullar in mot land (avstånd till strand ≈ djup / lutning)
+  float hd=depth/max(vSlope,0.004);
+  float roll=smoothstep(0.78,1.0,sin(hd*0.85-uT*1.7+noise(p*0.07)*4.0))*(1.0-smoothstep(3.0,22.0,hd))*(1.0-smoothstep(35.0,140.0,d));
+  float foam=max((1.0-smoothstep(0.02,0.09,depth))*(0.65+0.35*sin(uT*1.3+vW.x*0.31+vW.z*0.27)),roll*0.8)*(1.0-smoothstep(40.0,160.0,d));
+  col=mix(col,vec3(0.90,0.93,0.92)*min(ex,1.05),foam*0.55);
+  // dis: vattnet långt bort går över i himlens färg
+  float far=uMaxD>0.0?uMaxD:900.0;
+  col=mix(col,uSky*0.96,smoothstep(far*0.25,far,dh)*0.5);
+  float a=mix(0.66,0.92,1.0-exp(-depth*0.45));
+  a=max(a,fres*0.85); a=max(a,foam*0.6);
+  a*=smoothstep(0.0,0.025,depth)*clamp(vSea,0.0,1.0);
   a*=1.0-smoothstep(uR*1.25,uR*4.0,max(abs(vW.x),abs(vW.z)));
   if(uMaxD>0.0) a*=1.0-smoothstep(uMaxD*0.35,uMaxD,dh);
   gl_FragColor=vec4(col,a);
@@ -981,24 +1002,27 @@ function initScene() {
   const tm = new THREE.ShaderMaterial({ uniforms: U, vertexShader: TER_VS, fragmentShader: TER_FS, transparent: true, depthWrite: true, side: THREE.DoubleSide, extensions: { derivatives: true } });
   terrain = new THREE.Mesh(g, tm); terrain.renderOrder = 0; scene.add(terrain);
   // forntida hav: ett rutnät i strandnivå med djup (strandnivå − mark) och SGU:s havsmask per punkt
-  const wmat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: WAT_VS, fragmentShader: WAT_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, extensions: { derivatives: true } });
+  const wmat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: WAT_VS, fragmentShader: WAT_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, extensions: { derivatives: true }, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
   const wgeo = new THREE.BufferGeometry(), wpos = new Float32Array(nx * ny * 3);
   for (let k = 0; k < nx * ny; k++) { wpos[k * 3] = pos[k * 3]; wpos[k * 3 + 2] = pos[k * 3 + 2]; }
   wgeo.setAttribute('position', new THREE.BufferAttribute(wpos, 3)); wgeo.setIndex(new THREE.BufferAttribute(idx, 1));
-  WAT.depth = new Float32Array(nx * ny); WAT.sea = new Float32Array(nx * ny).fill(1);
+  WAT.sea = new Float32Array(nx * ny).fill(1);
+  const slope = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const k = j * nx + i, gx = (d.z[j * nx + Math.min(nx - 1, i + 1)] - d.z[j * nx + Math.max(0, i - 1)]) / (2 * d.ds), gy = (d.z[Math.min(ny - 1, j + 1) * nx + i] - d.z[Math.max(0, j - 1) * nx + i]) / (2 * d.ds); slope[k] = Math.max(0.004, Math.hypot(gx, gy)); }
   g.setAttribute('aSea', new THREE.BufferAttribute(WAT.sea, 1));
-  wgeo.setAttribute('aDepth', new THREE.BufferAttribute(WAT.depth, 1)); wgeo.setAttribute('aSea', new THREE.BufferAttribute(WAT.sea, 1));
+  wgeo.setAttribute('aZ', new THREE.BufferAttribute(Float32Array.from(d.z), 1)); wgeo.setAttribute('aSea', new THREE.BufferAttribute(WAT.sea, 1)); wgeo.setAttribute('aSlope', new THREE.BufferAttribute(slope, 1));
   wgeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), R * 1.5);
   water = new THREE.Group(); water.renderOrder = 1; scene.add(water);
   WAT.inner = new THREE.Mesh(wgeo, wmat); WAT.inner.renderOrder = 1; WAT.inner.frustumCulled = false; water.add(WAT.inner);
   // hav som fortsätter mot horisonten där områdets kant är öppet hav (ingen terräng finns där, därför tonas det ut)
   const ring = []; const step = Math.max(1, Math.round((nx - 1) / 60));
   const edge = []; for (let i = 0; i < nx; i += step) edge.push([i, 0]); for (let j = 0; j < ny; j += step) edge.push([nx - 1, j]); for (let i = nx - 1; i >= 0; i -= step) edge.push([i, ny - 1]); for (let j = ny - 1; j >= 0; j -= step) edge.push([0, j]);
-  const rpos = new Float32Array(edge.length * 2 * 3); WAT.ringSea = new Float32Array(edge.length * 2); WAT.ringDepth = new Float32Array(edge.length * 2).fill(40); WAT.ringNode = edge.map(([i, j]) => j * nx + i);
+  const rpos = new Float32Array(edge.length * 2 * 3); WAT.ringSea = new Float32Array(edge.length * 2); const ringZ = new Float32Array(edge.length * 2); WAT.ringNode = edge.map(([i, j]) => j * nx + i);
+  WAT.ringNode.forEach((k, q) => { ringZ[q * 2] = d.z[k]; ringZ[q * 2 + 1] = d.z[k] - 40; });
   edge.forEach(([i, j], q) => { const k = j * nx + i, x = pos[k * 3], z = pos[k * 3 + 2]; rpos.set([x, 0, z], q * 6); rpos.set([x * 4, 0, z * 4], q * 6 + 3); });
   const ridx = []; for (let q = 0; q < edge.length; q++) { const a = q * 2, b = a + 1, c = ((q + 1) % edge.length) * 2, d = c + 1; ridx.push(a, c, b, b, c, d); }
   const rgeo = new THREE.BufferGeometry(); rgeo.setAttribute('position', new THREE.BufferAttribute(rpos, 3)); rgeo.setIndex(ridx);
-  rgeo.setAttribute('aDepth', new THREE.BufferAttribute(WAT.ringDepth, 1)); rgeo.setAttribute('aSea', new THREE.BufferAttribute(WAT.ringSea, 1));
+  rgeo.setAttribute('aZ', new THREE.BufferAttribute(ringZ, 1)); rgeo.setAttribute('aSea', new THREE.BufferAttribute(WAT.ringSea, 1)); rgeo.setAttribute('aSlope', new THREE.BufferAttribute(new Float32Array(edge.length * 2).fill(0.01), 1));
   WAT.ring = new THREE.Mesh(rgeo, wmat); WAT.ring.renderOrder = 1; WAT.ring.frustumCulled = false; water.add(WAT.ring);
   // koppling rutnätspunkt → SGU-ruta (görs en gång)
   WAT.cell = null;
@@ -1223,7 +1247,7 @@ function init3() { if (_e) return true; if (typeof THREE === 'undefined') return
   _y = new THREE.Vector3(0, 1, 0);
   _v = new THREE.Vector3();
   _qa = new THREE.Quaternion();
-  _qy = new THREE.Quaternion(); U.uCam.value = new THREE.Vector3(); U.uSun.value = new THREE.Vector3(-0.3, 0.55, 0.78).normalize(); return true; }
+  _qy = new THREE.Quaternion(); U.uCam.value = new THREE.Vector3(); U.uSun.value = new THREE.Vector3(-0.3, 0.55, 0.78).normalize(); U.uSky.value = new THREE.Vector3(0.62, 0.72, 0.80); return true; }
 const screenAngle = () => (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
 function devQuat(q, a, b, g, o) { _e.set(b * D2R, a * D2R, -g * D2R, 'YXZ'); q.setFromEuler(_e); q.multiply(_q1); q.multiply(_q0.setFromAxisAngle(_zee, -o * D2R)); return q; }
 function azOf(q) { _v.set(0, 0, -1).applyQuaternion(q); return { az: (Math.atan2(_v.x, -_v.z) * R2D + 360) % 360, fy: _v.y }; }
@@ -1297,9 +1321,11 @@ async function enterView(mode) {
   $('bLock').textContent = P.lock && mode === 'ar' ? 'Släpp position' : 'Lås position'; $('bLock').hidden = mode !== 'ar';
   if (mode === 'desk') toast('Dra i bilden för att se dig om. Tryck i kartan för att flytta dig.');
   else setTimeout(() => { if (MODE === 'ar' && !P.have) toast('Väntar på GPS…'); }, 2500);
+  setTimeout(() => showTitle(S.year), 700);
   if (!loopOn) { loopOn = true; requestAnimationFrame(frame); }
 }
 function exitView() {
+  stopPlay();
   MODE = null; loopOn = false;
   window.removeEventListener('deviceorientation', onOri, true); window.removeEventListener('deviceorientationabsolute', onOri, true);
   if (P.watch != null) { navigator.geolocation.clearWatch(P.watch); P.watch = null; } clearInterval(P.poll);
@@ -1320,6 +1346,58 @@ function onResize() {
 }
 window.addEventListener('resize', () => setTimeout(onResize, 60));
 $('cam').addEventListener('loadedmetadata', onResize);
+
+// ---------- Tidsresa: titel, ram och uppspelning ----------
+function vignette(on) { const v = $('vig'); if (v) v.classList.toggle('show', !!on); }
+function showTitle(y) {
+  const el = $('ttl'); if (!el || !MODE) return;
+  const sh = shoreAt(y), lvl = sh && !sh.none ? `havsytan ${fmt(sh.L, 0)} m ö.h.` : sh && sh.none ? 'havet låg utanför området' : '';
+  el.innerHTML = `<b>${esc(periodOf(y))}</b><span>ca ${fmtYear(y)}${lvl ? ' · ' + lvl : ''}</span>`;
+  el.classList.add('show'); clearTimeout(showTitle.t); showTitle.t = setTimeout(() => el.classList.remove('show'), 2600);
+}
+const PLAY = { on: false, y: 0, rate: 0, last: 0, step: null, per: null };
+function startPlay() {
+  const p0 = S.curve && S.curve.pts && S.curve.pts.length ? S.curve.pts[0][0] - 300 : -9500;
+  const y0 = S.year >= 1850 ? Math.max(+$('yr').min, Math.floor(p0 / 100) * 100) : S.year;
+  Object.assign(PLAY, { on: true, y: y0, rate: Math.max(150, (1900 - y0) / 24), last: 0, step: null, per: periodOf(y0) });
+  $('bPlay').textContent = '❚❚'; $('bPlay').classList.add('on'); $('bPlay').setAttribute('aria-label', 'Pausa');
+  setYear(Math.round(y0 / 50) * 50, false, { play: true, mask: true }); showTitle(y0); vignette(true);
+}
+function stopPlay() {
+  if (!PLAY.on) return; PLAY.on = false;
+  $('bPlay').textContent = '▶'; $('bPlay').classList.remove('on'); $('bPlay').setAttribute('aria-label', 'Spela upp tiden');
+  vignette(false); store.set('year', S.year); updateWater([S.year], LV.target); renderCurve();
+}
+function stepPlay(now) {
+  if (!PLAY.on) return;
+  const dt = PLAY.last ? Math.min(0.1, (now - PLAY.last) / 1000) : 0; PLAY.last = now;
+  PLAY.y = Math.min(1900, PLAY.y + PLAY.rate * dt);
+  const st = Math.floor(PLAY.y / 100), mask = st !== PLAY.step; PLAY.step = st;
+  setYear(Math.round(PLAY.y / 10) * 10, false, { play: true, mask });
+  const per = periodOf(PLAY.y); if (per !== PLAY.per) { PLAY.per = per; showTitle(PLAY.y); }
+  if (PLAY.y >= 1900) stopPlay();
+}
+$('bPlay').addEventListener('click', () => { if (PLAY.on) stopPlay(); else startPlay(); });
+
+// ---------- Ljus och himmel från kamerabilden ----------
+const SKY = { c: [0.62, 0.72, 0.80], expo: 1, cv: null, last: 0 };
+function sampleSky(now) {
+  const v = $('cam');
+  if (MODE !== 'ar' || !v.videoWidth || now - SKY.last < 400) return; SKY.last = now;
+  try {
+    if (!SKY.cv) { SKY.cv = document.createElement('canvas'); SKY.cv.width = 24; SKY.cv.height = 40; }
+    const x = SKY.cv.getContext('2d', { willReadFrequently: true }); x.drawImage(v, 0, 0, 24, 40);
+    const d = x.getImageData(0, 0, 24, 40).data; let lum = 0, n = 0; const sky = [];
+    for (let j = 0; j < 40; j++) for (let i = 0; i < 24; i++) {
+      const o = (j * 24 + i) * 4, r = d[o] / 255, g = d[o + 1] / 255, b = d[o + 2] / 255, l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      lum += l; n++;
+      if (j < 20 && l > 0.42 && b >= r * 0.92) sky.push([l, r, g, b]);
+    }
+    const mean = lum / n; SKY.expo += (clamp(mean / 0.40, 0.55, 1.2) - SKY.expo) * 0.3;
+    if (sky.length >= 8) { sky.sort((a, b) => b[0] - a[0]); const top = sky.slice(0, Math.max(8, Math.floor(sky.length * 0.3))); const c = [0, 0, 0]; top.forEach(p => { c[0] += p[1]; c[1] += p[2]; c[2] += p[3]; }); for (let k = 0; k < 3; k++) SKY.c[k] += (c[k] / top.length - SKY.c[k]) * 0.3; }
+  } catch (e) { }
+  U.uSky.value.set(SKY.c[0], SKY.c[1], SKY.c[2]); U.uExpo.value = SKY.expo;
+}
 
 // ---------- Bildloop ----------
 let loopOn = false, lastHud = 0, lastPins = 0, curAz = 0;
@@ -1351,8 +1429,9 @@ function frame(t) {
   const a = S.area; camera.position.set(P.curE - a.E0, camHeight(), -(P.curN - a.N0));
   U.uCam.value.copy(camera.position); U.uT.value = t / 1000;
   curAz = azOf(camera.quaternion).az;
+  stepLevel(t); stepPlay(t); sampleSky(t);
   const ready = MODE !== 'ar' || P.have || P.lock;
-  terrain.visible = ready; pinGroup.visible = ready; water.visible = ready && S.lay.hav && U.uL.value > -500 && U.uUnder.value < 0.5;
+  terrain.visible = ready; pinGroup.visible = ready; water.visible = ready && S.lay.hav && (U.uL.value > -500 || LV.anim) && U.uUnder.value < 0.5;
   if (t - lastPins > 250) { lastPins = t; updatePins(); }
   camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); declutter();
   if (t - lastHud > 200) { lastHud = t; updateHud(); }
@@ -1384,33 +1463,68 @@ function updateHud() {
 // =====================================================================
 // Djup och havsmask per punkt. Med SGU-data räknas bara ytor som SGU anger som hav/vatten det året (med en rutas marginal,
 // så att strandkanten följer höjdmodellen); utan SGU (egen nivå, exempel) visas allt under nivån.
-function updateWater() {
-  if (!WAT.depth || !S.dem) return;
-  const d = S.dem, L = U.uL.value, Y = S.year, st = S.strand, useSgu = !!(st && WAT.cell && S.manualL == null);
-  const nx = d.nx, ny = d.ny, z = d.z, dep = WAT.depth, sea = WAT.sea;
-  let seaCell = null;
-  if (useSgu) { seaCell = new Uint8Array(st.nx * st.ny); for (let k = 0; k < seaCell.length; k++) { const v = st.emerge[k]; seaCell[k] = isFinite(v) && v >= Y ? 1 : 0; }
-    const g = new Uint8Array(seaCell); for (let j = 0; j < st.ny; j++) for (let i = 0; i < st.nx; i++) { if (g[j * st.nx + i]) continue; for (let dj = -1; dj <= 1 && !seaCell[j * st.nx + i]; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < st.nx && jj < st.ny && g[jj * st.nx + ii]) { seaCell[j * st.nx + i] = 1; break; } } } }
-  for (let k = 0; k < nx * ny; k++) { dep[k] = L - z[k]; sea[k] = L < -500 ? 0 : useSgu ? seaCell[WAT.cell[k]] : 1; }
-  WAT.inner.geometry.attributes.aDepth.needsUpdate = true; WAT.inner.geometry.attributes.aSea.needsUpdate = true; if (terrain) terrain.geometry.attributes.aSea.needsUpdate = true;
+function seaCellsFor(Y) {
+  const st = S.strand, m = new Uint8Array(st.nx * st.ny);
+  for (let k = 0; k < m.length; k++) { const v = st.emerge[k]; m[k] = isFinite(v) && v >= Y ? 1 : 0; }
+  const g = new Uint8Array(m);
+  for (let j = 0; j < st.ny; j++) for (let i = 0; i < st.nx; i++) { const k = j * st.nx + i; if (g[k]) continue;
+    for (let dj = -1; dj <= 1 && !m[k]; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < st.nx && jj < st.ny && g[jj * st.nx + ii]) { m[k] = 1; break; } } }
+  return m;
+}
+// Havsmask per punkt. Med SGU-data räknas bara ytor som SGU anger som vatten (med en rutas marginal så att strandkanten följer
+// höjdmodellen). Under en övergång mellan två år används båda årens hav, så att inget vatten försvinner mitt i animationen.
+function updateWater(years, Lfinal) {
+  if (!WAT.sea || !S.dem) return;
+  const d = S.dem, st = S.strand, useSgu = !!(st && WAT.cell && S.manualL == null), sea = WAT.sea, z = d.z;
+  const L = Lfinal != null ? Lfinal : LV.target;
+  if (L < -500) sea.fill(0);
+  else if (!useSgu) sea.fill(1);
+  else { const ms = (years || [S.year]).map(seaCellsFor); for (let k = 0; k < sea.length; k++) { const c = WAT.cell[k]; let v = 0; for (const m of ms) if (m[c]) { v = 1; break; } sea[k] = v; } }
+  WAT.inner.geometry.attributes.aSea.needsUpdate = true; if (terrain) terrain.geometry.attributes.aSea.needsUpdate = true;
   // yttre havet: bara där kanten är hav med minst 1,5 m djup
-  WAT.ringNode.forEach((k, q) => { const v = sea[k] && dep[k] > 1.5 ? 1 : 0; WAT.ringSea[q * 2] = v; WAT.ringSea[q * 2 + 1] = v; WAT.ringDepth[q * 2] = Math.max(dep[k], 0); });
-  WAT.ring.geometry.attributes.aSea.needsUpdate = true; WAT.ring.geometry.attributes.aDepth.needsUpdate = true;
+  WAT.ringNode.forEach((k, q) => { const v = sea[k] && L - z[k] > 1.5 ? 1 : 0; WAT.ringSea[q * 2] = v; WAT.ringSea[q * 2 + 1] = v; });
+  WAT.ring.geometry.attributes.aSea.needsUpdate = true;
   scheduleWater();
 }
-function setYear(y, init) {
+// Mjuk övergång av havsnivån ("tidsresa")
+const LV = { target: -999, from: -999, t0: 0, dur: 1600, anim: false, years: null };
+const ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+function applyLevel(lvl, instant, fromYear) {
+  const cur = U.uL.value;
+  LV.target = lvl; LV.end = lvl;
+  if (instant || !MODE || (cur < -500 && lvl < -500)) { LV.anim = false; U.uL.value = lvl; if (water) water.position.y = lvl; updateWater([S.year], lvl); return; }
+  // saknas havet före eller efter övergången stiger/sjunker vattnet från strax under områdets lägsta mark
+  let minZ = Infinity; if (S.dem) for (let k = 0; k < S.dem.z.length; k += 7) minZ = Math.min(minZ, S.dem.z[k]);
+  const floorL = minZ - 3;
+  LV.from = cur < -500 ? floorL : cur; LV.target = lvl < -500 ? floorL : lvl;
+  U.uL.value = LV.from; water.position.y = LV.from; water.visible = S.lay.hav;
+  LV.t0 = performance.now(); LV.anim = true;
+  const ys = fromYear != null && fromYear !== S.year && cur > -500 ? [fromYear, S.year] : [S.year];
+  updateWater(lvl < -500 && fromYear != null ? [fromYear] : ys, Math.max(LV.from, LV.target));
+  vignette(true);
+}
+function stepLevel(now) {
+  if (!LV.anim) return;
+  const t = clamp((now - LV.t0) / LV.dur, 0, 1), v = LV.from + (LV.target - LV.from) * ease(t);
+  U.uL.value = v; water.position.y = v;
+  if (now - (stepLevel.last || 0) > 160) { stepLevel.last = now; scheduleWater(); }
+  if (t >= 1) { U.uHav.value = LV.end > -500 ? 1 : 0; LV.anim = false; LV.target = LV.end; U.uL.value = LV.end; water.position.y = LV.end; updateWater([S.year], LV.end); vignette(false); }
+}
+function setYear(y, init, opt) {
+  const prevYear = S.year;
   S.year = y; const r = $('yr');
   const p0 = S.curve && S.curve.pts.length ? S.curve.pts[0][0] : -9500;
   r.min = Math.min(-9500, Math.floor((p0 - 500) / 500) * 500); r.max = 1900; r.value = y;
-  store.set('year', y);
+  if (!(opt && opt.play)) store.set('year', y);
   const sh = shoreAt(y);
   const lvl = sh && !sh.none ? sh.L : -999;
-  U.uL.value = lvl; water.position.y = lvl; updateWater();
-  water.visible = lvl > -500 && S.lay.hav; U.uHav.value = lvl > -500 ? 1 : 0; U.uWater.value = S.lay.hav ? 1 : 0; U.uShore.value = S.lay.strand ? 1 : 0;
+  if (opt && opt.play) { LV.anim = false; LV.target = lvl; U.uL.value = lvl; water.position.y = lvl; if (opt.mask) updateWater([S.year], lvl); }
+  else applyLevel(lvl, !!init, prevYear);
+  water.visible = (lvl > -500 || LV.anim) && S.lay.hav; U.uHav.value = lvl > -500 || LV.anim ? 1 : 0; U.uWater.value = S.lay.hav ? 1 : 0; U.uShore.value = S.lay.strand ? 1 : 0;
   $('yrTxt').textContent = fmtYear(y); $('perTxt').textContent = periodOf(y);
   document.querySelectorAll('#perChips button').forEach(b => { const p = PERIODS[+b.dataset.i]; b.classList.toggle('on', p ? y >= p.a && y < p.b : y >= 1850); });
   scheduleWater(); updateLevelTxt();
-  if (!init) renderCurve();
+  if (!init && !(opt && opt.play)) renderCurve();
 }
 let waterPending = false;
 function scheduleWater() { if (waterPending) return; waterPending = true; requestAnimationFrame(() => { waterPending = false; drawWaterMask(); }); }
@@ -1439,8 +1553,9 @@ function buildLayerChips() {
 }
 $('perChips').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.now) { setYear(1900); return; }
-  const p = PERIODS[+b.dataset.i]; setYear(Math.round((p.a + p.b) / 2 / 50) * 50);
+  stopPlay();
+  if (b.dataset.now) { setYear(1900); showTitle(1900); return; }
+  const p = PERIODS[+b.dataset.i], y = Math.round((p.a + p.b) / 2 / 50) * 50; setYear(y); showTitle(y);
 });
 $('layChips').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -1451,7 +1566,8 @@ $('layChips').addEventListener('click', e => {
   if (k === 'pot' || k === 'zon' || k === 'lamn' || k === 'egen') drawOverlay();
   lastPins = 0;
 });
-$('yr').addEventListener('input', e => setYear(+e.target.value));
+$('yr').addEventListener('input', e => { stopPlay(); LV.dur = 450; setYear(+e.target.value); });
+$('yr').addEventListener('change', e => { LV.dur = 1600; showTitle(+e.target.value); });
 
 // =====================================================================
 // Paneler: huvudpanel, infokort, kalibrering
