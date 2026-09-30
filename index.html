@@ -94,6 +94,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,label:focus-within
 .chip .dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
 .chip.ok{color:var(--ok)} .chip.warn{color:var(--warn)} .chip.err{color:var(--err)}
 .chip.ok span,.chip.warn span,.chip.err span{color:var(--text)}
+.chip.sea{color:var(--water);border-color:rgba(87,169,232,.45)}
 .chip.demo{color:var(--warn);border-color:rgba(242,193,78,.4)}
 button.chip{min-height:32px}
 #mini{position:absolute;right:12px;top:calc(env(safe-area-inset-top,0px) + 8px);width:132px;height:132px;border-radius:50%;border:1px solid var(--line-2);background:var(--glass);box-shadow:0 4px 18px rgba(0,0,0,.35)}
@@ -105,6 +106,7 @@ button.chip{min-height:32px}
 #ttl b{display:block;font:600 30px/1.15 'IBM Plex Sans',sans-serif;letter-spacing:-.01em;text-wrap:balance}
 #ttl span{display:block;margin-top:6px;font:500 14px 'IBM Plex Mono',monospace;opacity:.92}
 .slrow{display:flex;gap:10px;align-items:center}
+.stepb{flex:none;width:36px;height:40px;border-radius:10px;border:1px solid var(--line-2);background:rgba(255,255,255,.06);font:600 20px/1 'IBM Plex Sans',sans-serif;-webkit-user-select:none;user-select:none;touch-action:manipulation}
 .play{flex:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--line-2);background:rgba(255,255,255,.08);font-size:15px;line-height:1}
 .play.on{background:var(--shore);color:#0b1210;border-color:var(--shore)}
 #cross{position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;pointer-events:none;opacity:.8}
@@ -234,7 +236,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <button class="btn wide" id="bDesk" type="button" disabled>Testa vid skrivbordet</button>
       <button class="btn wide ghost" id="bDemo" type="button">Visa exempel</button>
     </div>
-    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30j</span></p>
+    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30k</span></p>
   </div>
 </main>
 
@@ -253,6 +255,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
     <span class="chip" id="cHead"><span>–°</span></span>
     <span class="chip" id="cElev"><span>– m ö.h.</span></span>
     <span class="chip warn" id="cEdge" hidden><i class="dot"></i><span></span></span>
+    <span class="chip sea" id="cSea" hidden><i class="dot"></i><span></span></span>
     <span class="chip demo" id="cDemo" hidden><i class="dot"></i><span>Exempeldata</span></span>
   </div>
   <canvas id="mini" aria-label="Karta"></canvas>
@@ -265,7 +268,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <div class="y"><b id="yrTxt">–</b><span id="perTxt"></span></div>
       <div class="l" id="lvlTxt"></div>
     </div>
-    <div class="slrow"><button class="play" id="bPlay" type="button" aria-label="Spela upp tiden">▶</button><input type="range" id="yr" min="-9500" max="1900" step="50" aria-label="År"></div>
+    <div class="slrow"><button class="play" id="bPlay" type="button" aria-label="Spela upp tiden">▶</button><button class="stepb" id="bBack" type="button" aria-label="100 år bakåt">‹</button><input type="range" id="yr" min="-9500" max="1900" step="10" aria-label="År"><button class="stepb" id="bFwd" type="button" aria-label="100 år framåt">›</button></div>
     <div class="fold">
       <div class="chips" id="perChips" role="group" aria-label="Perioder"></div>
     </div>
@@ -1359,7 +1362,7 @@ const PLAY = { on: false, y: 0, rate: 0, last: 0, step: null, per: null };
 function startPlay() {
   const p0 = S.curve && S.curve.pts && S.curve.pts.length ? S.curve.pts[0][0] - 300 : -9500;
   const y0 = S.year >= 1850 ? Math.max(+$('yr').min, Math.floor(p0 / 100) * 100) : S.year;
-  Object.assign(PLAY, { on: true, y: y0, rate: Math.max(150, (1900 - y0) / 24), last: 0, step: null, per: periodOf(y0) });
+  Object.assign(PLAY, { on: true, y: y0, rate: clamp((1900 - y0) / 60, 40, 150), last: 0, step: null, per: periodOf(y0) });
   $('bPlay').textContent = '❚❚'; $('bPlay').classList.add('on'); $('bPlay').setAttribute('aria-label', 'Pausa');
   setYear(Math.round(y0 / 50) * 50, false, { play: true, mask: true }); showTitle(y0); vignette(true);
 }
@@ -1378,6 +1381,14 @@ function stepPlay(now) {
   if (PLAY.y >= 1900) stopPlay();
 }
 $('bPlay').addEventListener('click', () => { if (PLAY.on) stopPlay(); else startPlay(); });
+// ±100 år per tryck; håll inne för att fortsätta
+function stepYears(dy) { stopPlay(); const r = $('yr'), y = clamp(Math.round((S.year + dy) / 10) * 10, +r.min, +r.max); if (y === S.year) return; LV.dur = 700; setYear(y); }
+[['bBack', -100], ['bFwd', 100]].forEach(([id, dy]) => {
+  const b = $(id); let t1 = null, t2 = null;
+  const stop = () => { clearTimeout(t1); clearInterval(t2); t1 = t2 = null; if (b._moved) { LV.dur = 1600; showTitle(S.year); } b._moved = false; };
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b._moved = true; stepYears(dy); t1 = setTimeout(() => { t2 = setInterval(() => stepYears(dy), 220); }, 450); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, stop));
+});
 
 // ---------- Ljus och himmel från kamerabilden ----------
 const SKY = { c: [0.62, 0.72, 0.80], expo: 1, cv: null, last: 0 };
@@ -1397,6 +1408,21 @@ function sampleSky(now) {
     if (sky.length >= 8) { sky.sort((a, b) => b[0] - a[0]); const top = sky.slice(0, Math.max(8, Math.floor(sky.length * 0.3))); const c = [0, 0, 0]; top.forEach(p => { c[0] += p[1]; c[1] += p[2]; c[2] += p[3]; }); for (let k = 0; k < 3; k++) SKY.c[k] += (c[k] / top.length - SKY.c[k]) * 0.3; }
   } catch (e) { }
   U.uSky.value.set(SKY.c[0], SKY.c[1], SKY.c[2]); U.uExpo.value = SKY.expo;
+}
+
+// ---------- Var ligger havet? ----------
+const SEA = { last: 0, d: 1e9, az: 0 };
+function nearestSeaDir() {
+  const d = S.dem, L = LV.anim ? LV.end : U.uL.value; if (!d || !WAT.sea || L == null || L < -500) return { d: 1e9 };
+  const stp = Math.max(1, Math.round(d.nx / 150)); let best = 1e9, bi = 0, bj = 0;
+  for (let j = 0; j < d.ny; j += stp) for (let i = 0; i < d.nx; i += stp) { const k = j * d.nx + i; if (WAT.sea[k] > 0 && d.z[k] < L - 0.05) { const E = d.x0 + i * d.ds, N = d.y0 + j * d.ds, r = Math.hypot(E - P.curE, N - P.curN); if (r < best) { best = r; bi = E; bj = N; } } }
+  return { d: best, az: (Math.atan2(bi - P.curE, bj - P.curN) * R2D + 360) % 360 };
+}
+function updateSeaChip(now) {
+  const el = $('cSea'); if (!el) return;
+  if (now - SEA.last > 800) { SEA.last = now; const r = nearestSeaDir(); SEA.d = r.d; SEA.az = r.az; }
+  const lim = CAL.waterD ? CAL.waterD * 0.8 : 1e9, show = S.lay.hav && SEA.d < 1e8 && SEA.d > lim && U.uUnder.value < 0.5;
+  el.hidden = !show; if (show) el.querySelector('span').textContent = `Havet ${distTxt(SEA.d)} åt ${dirName(SEA.az)}`;
 }
 
 // ---------- Bildloop ----------
@@ -1452,7 +1478,7 @@ function updateHud() {
   if (dc > a.R * 0.85) { ce.hidden = false; ce.querySelector('span').textContent = dc > a.R ? `${distTxt(dc - a.R)} utanför området` : 'Nära kanten av området'; } else ce.hidden = true;
   const L = U.uL.value, kk = S.dem ? clamp(Math.round((P.curN - S.dem.y0) / S.dem.ds), 0, S.dem.ny - 1) * S.dem.nx + clamp(Math.round((P.curE - S.dem.x0) / S.dem.ds), 0, S.dem.nx - 1) : 0;
   const under = S.lay.hav && L > -500 && camera.position.y < L && (!WAT.sea || WAT.sea[kk] > 0);
-  U.uUnder.value = under ? 1 : 0; $('under').hidden = !under;
+  U.uUnder.value = under ? 1 : 0; $('under').hidden = !under; updateSeaChip(performance.now());
   if (under) { const dep = L - camera.position.y + CAL.eye, o = clamp(0.38 + dep * 0.06, 0.38, 0.8); $('under').style.background = `linear-gradient(180deg, rgba(40,105,150,${(o * 0.8).toFixed(2)}), rgba(8,45,85,${o.toFixed(2)}))`; $('underTxt').textContent = `Du står ${fmt(dep, 1)} m under dåtidens havsyta`; }
   updateLevelTxt(zg);
   drawMini(curAz, 2 * Math.atan(Math.tan(vfov / 2 * D2R) * camera.aspect) * R2D);
@@ -1514,7 +1540,9 @@ function setYear(y, init, opt) {
   const prevYear = S.year;
   S.year = y; const r = $('yr');
   const p0 = S.curve && S.curve.pts.length ? S.curve.pts[0][0] : -9500;
-  r.min = Math.min(-9500, Math.floor((p0 - 500) / 500) * 500); r.max = 1900; r.value = y;
+  const c = S.curve; let lo = -9500;
+  if (c && c.pts && c.pts.length) lo = Math.floor((Math.min(c.pts[0][0], c.allSeaUntil != null ? c.allSeaUntil : Infinity) - 400) / 100) * 100;
+  r.min = clamp(Math.min(lo, 1400), -12000, 1400); r.max = 1900; r.value = y;
   if (!(opt && opt.play)) store.set('year', y);
   const sh = shoreAt(y);
   const lvl = sh && !sh.none ? sh.L : -999;
