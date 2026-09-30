@@ -225,7 +225,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <button class="btn wide" id="bDesk" type="button" disabled>Testa vid skrivbordet</button>
       <button class="btn wide ghost" id="bDemo" type="button">Visa exempel</button>
     </div>
-    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30b</span></p>
+    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30c</span></p>
   </div>
 </main>
 
@@ -279,6 +279,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
     <div class="crow"><span>Höjdjustering</span><div class="stepper"><button type="button" data-c="h" data-d="-0.5">−</button><output id="oH">0,0 m</output><button type="button" data-c="h" data-d="0.5">+</button></div></div>
     <details class="more"><summary>Fler inställningar</summary>
     <div class="crow"><span>Ögonhöjd</span><div class="stepper"><button type="button" data-c="eye" data-d="-0.1">−</button><output id="oEye">1,6 m</output><button type="button" data-c="eye" data-d="0.1">+</button></div></div>
+    <div class="crow"><span>Vatten syns inom</span><div class="seg" id="segWd"><button type="button" data-v="150">150 m</button><button type="button" data-v="300">300 m</button><button type="button" data-v="700">700 m</button><button type="button" data-v="0">Allt</button></div></div>
     <div class="crow"><span>Bildvinkel</span><div class="stepper"><button type="button" data-c="fov" data-d="-1">−</button><output id="oFov">67°</output><button type="button" data-c="fov" data-d="1">+</button></div></div>
     <div class="crow"><span>Havsyta</span><div class="stepper"><div class="seg" id="segLvl"><button type="button" data-v="sgu">SGU</button><button type="button" data-v="egen">Egen</button></div><button type="button" data-c="lvl" data-d="-0.5" class="lvlb">−</button><output id="oLvl" class="lvlb">–</output><button type="button" data-c="lvl" data-d="0.5" class="lvlb">+</button></div></div>
     <div class="crow"><span>Position</span><div class="row"><button class="btn" id="bCenter" type="button" style="min-height:38px;padding:6px 10px;font-size:13px">Mitt i området</button></div></div>
@@ -392,8 +393,8 @@ const S = {
   lay: Object.assign({ hav: true, strand: true, pot: true, zon: true, lamn: true, egen: true, kurv: false }, store.get('lay', {})),
   demo: false, savedAt: null,
 };
-const CAL = Object.assign({ userOff: 0, eye: 1.6, hOff: 0, fov: 67.3, lockCompass: false }, store.get('cal', {}));
-const saveCal = () => store.set('cal', { userOff: CAL.userOff, eye: CAL.eye, hOff: CAL.hOff, fov: CAL.fov, lockCompass: CAL.lockCompass });
+const CAL = Object.assign({ userOff: 0, eye: 1.6, hOff: 0, fov: 67.3, lockCompass: false, waterD: 300 }, store.get('cal', {}));
+const saveCal = () => store.set('cal', { userOff: CAL.userOff, eye: CAL.eye, hOff: CAL.hOff, fov: CAL.fov, lockCompass: CAL.lockCompass, waterD: CAL.waterD });
 let radius = store.get('radius', 1000);
 
 // =====================================================================
@@ -891,7 +892,7 @@ function loadDemo() {
 let renderer, scene, camera, terrain, water, overlayTex, overlayCv, pinGroup;
 const WAT = { depth: null, sea: null, cell: null, inner: null, ring: null };
 const PINS = [];
-const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 }, uSun: { value: null } };
+const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 }, uSun: { value: null }, uMaxD: { value: 300 } };
 const TER_VS = `attribute float aSea; varying float vSea; varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
 void main(){ vSea=aSea; vUv=uv; vH=position.y; vN=normal; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
 const TER_FS = `uniform sampler2D uOver; uniform float uL; uniform float uShore; uniform float uCont; uniform float uDesk; uniform float uR; uniform vec3 uCam; uniform float uHav;
@@ -910,7 +911,7 @@ void main(){
 }`;
 const WAT_VS = `attribute float aDepth; attribute float aSea; varying float vDepth; varying float vSea; varying vec3 vW;
 void main(){ vDepth=aDepth; vSea=aSea; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
-const WAT_FS = `uniform float uT; uniform vec3 uCam; uniform float uR; uniform vec3 uSun;
+const WAT_FS = `uniform float uT; uniform vec3 uCam; uniform float uR; uniform vec3 uSun; uniform float uMaxD;
 varying float vDepth; varying float vSea; varying vec3 vW;
 float wav(vec2 p){
   return sin(dot(p,vec2(0.110,0.046))+uT*0.85)*0.50 + sin(dot(p,vec2(-0.066,0.104))+uT*1.25)*0.33
@@ -942,6 +943,7 @@ void main(){
   a=max(a,fres*0.95); a=max(a,foam*0.85);
   a*=smoothstep(0.0,0.06,depth)*clamp(vSea,0.0,1.0);
   a*=1.0-smoothstep(uR*1.25,uR*4.0,max(abs(vW.x),abs(vW.z)));
+  if(uMaxD>0.0) a*=1.0-smoothstep(uMaxD*0.7,uMaxD,length(vW.xz-uCam.xz));
   gl_FragColor=vec4(col,a);
 }`;
 function initScene() {
@@ -1240,7 +1242,7 @@ function onGeo(p) {
   const k = P.acc <= 5 ? 0.5 : P.acc <= 12 ? 0.3 : 0.15;
   P.E += (E - P.E) * k; P.N += (N - P.N) * k;
 }
-function onGeoErr(e) { if (MODE === 'ar') toast(e.code === 1 ? 'Platsåtkomst nekades. Tillåt plats för Safari i Inställningar.' : 'Ingen GPS-position ännu.', true); }
+function onGeoErr(e) { if (MODE === 'ar' && !P.have) toast(e.code === 1 ? 'Platsåtkomst nekades för kameravyn. Tillåt plats för webbläsaren (Inställningar → Integritet → Platstjänster) och ladda om.' : 'Ingen GPS-position ännu. Gå ut i det fria en stund, eller lås positionen under Kalibrera.', true); }
 async function startAR() {
   if (!S.dem) return;
   if (!init3()) { toast('3D-delen kunde inte laddas (cdnjs.cloudflare.com blockeras eller saknar nät). Ladda om sidan med nätanslutning.', true); return; }
@@ -1272,7 +1274,7 @@ async function enterView(mode) {
   $('setup').hidden = true; $('view').hidden = false; $('view').classList.toggle('desk', mode === 'desk');
   $('cam').hidden = mode !== 'ar'; $('cDemo').hidden = !S.demo;
   U.uDesk.value = mode === 'desk' ? 1 : 0;
-  initScene(); lastSun = 0; if (!S.demo && mapStyle !== 'relief' && !BASE[mapStyle] && navigator.onLine !== false) ensureBase(mapStyle);
+  initScene(); applyWaterD(); lastSun = 0; if (!S.demo && mapStyle !== 'relief' && !BASE[mapStyle] && navigator.onLine !== false) ensureBase(mapStyle);
   buildPeriodChips(); buildLayerChips(); setYear(S.year, true); onResize(); showPanel('sheet');
   $('bLock').textContent = P.lock && mode === 'ar' ? 'Släpp position' : 'Lås position'; $('bLock').hidden = mode !== 'ar';
   if (mode === 'desk') toast('Dra i bilden för att se dig om. Tryck i kartan för att flytta dig.');
@@ -1331,6 +1333,8 @@ function frame(t) {
   const a = S.area; camera.position.set(P.curE - a.E0, camHeight(), -(P.curN - a.N0));
   U.uCam.value.copy(camera.position); U.uT.value = t / 1000;
   curAz = azOf(camera.quaternion).az;
+  const ready = MODE !== 'ar' || P.have || P.lock;
+  terrain.visible = ready; pinGroup.visible = ready; water.visible = ready && S.lay.hav && U.uL.value > -500;
   if (t - lastPins > 250) { lastPins = t; updatePins(); }
   camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); declutter();
   if (t - lastHud > 200) { lastHud = t; updateHud(); }
@@ -1341,8 +1345,8 @@ function updateHud() {
   const g = $('cGps');
   if (MODE === 'desk') { g.className = 'chip'; g.innerHTML = '<span>Skrivbordsläge</span>'; }
   else if (P.lock) { g.className = 'chip warn'; g.innerHTML = '<i class="dot"></i><span>Position låst</span>'; }
-  else if (!P.have) { g.className = 'chip err'; g.innerHTML = '<i class="dot"></i><span>Väntar på GPS</span>'; }
-  else { g.className = 'chip ' + (P.acc <= 6 ? 'ok' : P.acc <= 15 ? 'warn' : 'err'); g.innerHTML = `<i class="dot"></i><span>GPS ±${fmt(P.acc)} m</span>`; }
+  else if (!P.have) { g.className = 'chip err'; g.innerHTML = '<i class="dot"></i><span>Väntar på GPS – inga lager visas ännu</span>'; }
+  else { g.className = 'chip ' + (P.acc <= 6 ? 'ok' : P.acc <= 15 ? 'warn' : 'err'); g.innerHTML = `<i class="dot"></i><span>GPS ±${fmt(P.acc)} m${P.acc > 25 ? ' – osäkert' : ''}</span>`; }
   const comp = MODE === 'ar' && C.src === 'ios' && C.acc != null && C.acc > 25 ? ' ⚠' : '';
   $('cHead').innerHTML = `<span>${fmt(curAz)}° ${dirName(curAz)}${comp}</span>`;
   const zg = demAt(S.dem, P.curE, P.curN);
@@ -1465,11 +1469,13 @@ function showCard(p) {
   const ba = $('bAim'); if (ba) ba.onclick = () => { aimMode = true; openCal(); $('calHint').innerHTML = `Sikta med korset i mitten på <b>${esc(p.title)}</b> i verkligheten och tryck <b>Rikta in</b>.`; $('bCalDone').textContent = 'Rikta in'; };
 }
 function openCal() { showPanel('calib'); renderCal(); }
+function applyWaterD() { U.uMaxD.value = CAL.waterD || 0; if (WAT.ring) WAT.ring.visible = !CAL.waterD; }
 function renderCal() {
   $('oYaw').textContent = `${CAL.userOff >= 0 ? '+' : ''}${fmt(CAL.userOff, 1)}°`;
   $('oH').textContent = `${CAL.hOff >= 0 ? '+' : ''}${fmt(CAL.hOff, 1)} m`;
   $('oEye').textContent = `${fmt(CAL.eye, 1)} m`; $('oFov').textContent = `${fmt(CAL.fov, 0)}°`;
   document.querySelectorAll('#segComp button').forEach(b => b.classList.toggle('on', (+b.dataset.v === 1) === !!CAL.lockCompass));
+  document.querySelectorAll('#segWd button').forEach(b => b.classList.toggle('on', +b.dataset.v === (CAL.waterD || 0)));
   const own = S.manualL != null;
   document.querySelectorAll('#segLvl button').forEach(b => b.classList.toggle('on', (b.dataset.v === 'egen') === own));
   document.querySelectorAll('.lvlb').forEach(el => el.hidden = !own);
@@ -1485,6 +1491,7 @@ $('calib').addEventListener('click', e => {
   if (b.dataset.c === 'lvl') { S.manualL = Math.round((S.manualL + d) * 10) / 10; setYear(S.year); }
   saveCal(); renderCal();
 });
+$('segWd').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; CAL.waterD = +b.dataset.v; saveCal(); applyWaterD(); renderCal(); });
 $('segComp').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; CAL.lockCompass = b.dataset.v === '1'; saveCal(); renderCal(); });
 $('segLvl').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
