@@ -216,6 +216,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <button class="btn ghost" id="bClearFiles" type="button" hidden>Ta bort alla</button>
     </div>
     <ul class="files" id="fileList"></ul>
+    <div class="row"><span class="hint">Lämningar från RAÄ hämtas i steg 3. Visa</span><div class="seg" id="segLamn"><button type="button" data-v="forn">Fornlämningar</button><button type="button" data-v="alla">Alla kulturhistoriska</button></div></div>
   </section>
 
   <section class="step" aria-labelledby="h3">
@@ -236,7 +237,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <button class="btn wide" id="bDesk" type="button" disabled>Testa vid skrivbordet</button>
       <button class="btn wide ghost" id="bDemo" type="button">Visa exempel</button>
     </div>
-    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30k</span></p>
+    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30l</span></p>
   </div>
 </main>
 
@@ -293,6 +294,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
     <div class="crow"><span>Höjdjustering</span><div class="stepper"><button type="button" data-c="h" data-d="-0.5">−</button><output id="oH">0,0 m</output><button type="button" data-c="h" data-d="0.5">+</button></div></div>
     <details class="more"><summary>Fler inställningar</summary>
     <div class="crow"><span>Ögonhöjd</span><div class="stepper"><button type="button" data-c="eye" data-d="-0.1">−</button><output id="oEye">1,6 m</output><button type="button" data-c="eye" data-d="0.1">+</button></div></div>
+    <div class="crow"><span>Lämningar</span><div class="seg" id="segLamn2"><button type="button" data-v="forn">Fornlämningar</button><button type="button" data-v="alla">Alla</button></div></div>
     <div class="crow"><span>Höjdkurvor</span><div class="seg" id="segCont"><button type="button" data-v="1">1 m</button><button type="button" data-v="2">2 m</button><button type="button" data-v="5">5 m</button></div></div>
     <div class="crow"><span>Vatten syns inom</span><div class="seg" id="segWd"><button type="button" data-v="150">150 m</button><button type="button" data-v="300">300 m</button><button type="button" data-v="700">700 m</button><button type="button" data-v="0">Allt</button></div></div>
     <div class="crow"><span>Bildvinkel</span><div class="stepper"><button type="button" data-c="fov" data-d="-1">−</button><output id="oFov">67°</output><button type="button" data-c="fov" data-d="1">+</button></div></div>
@@ -405,8 +407,9 @@ const S = {
   files: [],
   year: store.get('year', -3500),
   manualL: null,
-  lay: Object.assign({ hav: true, strand: true, pot: true, zon: true, lamn: true, egen: true, kurv: false }, store.get('lay', {})),
+  lay: Object.assign({ hav: true, strand: true, pot: true, zon: true, lamn: true, egen: true, kurv: false, hoga: false }, store.get('lay', {})),
   demo: false, savedAt: null,
+  raa: [], lamnFilter: store.get('lamnFilter', 'alla'),
 };
 const CAL = Object.assign({ userOff: 0, eye: 1.6, hOff: 0, fov: 67.3, lockCompass: false, waterD: 300, cont: 2 }, store.get('cal', {}));
 const saveCal = () => store.set('cal', { userOff: CAL.userOff, eye: CAL.eye, hOff: CAL.hOff, fov: CAL.fov, lockCompass: CAL.lockCompass, waterD: CAL.waterD, cont: CAL.cont });
@@ -671,6 +674,37 @@ function shoreAt(Y) {
   return null;
 }
 
+// ---------- Lämningar från RAÄ (Kulturmiljöregistret via Riksantikvariets INSPIRE-tjänst) ----------
+const KMR_OGC = 'https://inspire-raa.metria.se/geoserver/Kulturhistoriska_lamningar/ogc/features/v1/collections/kulturhistoriska_fornlamningar/items';
+function wgsBox(b, m = 0.002) {
+  const c = [GK.toGeo(b.minE, b.minN), GK.toGeo(b.maxE, b.minN), GK.toGeo(b.minE, b.maxN), GK.toGeo(b.maxE, b.maxN)];
+  return [Math.min(...c.map(q => q[1])) - m, Math.min(...c.map(q => q[0])) - m, Math.max(...c.map(q => q[1])) + m, Math.max(...c.map(q => q[0])) + m].map(v => v.toFixed(5)).join(',');
+}
+async function fetchRAA(b, onProg) {
+  let url = `${KMR_OGC}?f=application/json&limit=1000&bbox=${wgsBox(b)}`; const out = [], seen = new Set(); let pages = 0;
+  while (url && pages < 25) {
+    checkCancel();
+    const r = await getJSON(url, 45000), fs = r.features || [];
+    fs.forEach(f => {
+      if (!f || !f.geometry) return; const g = normGeom(f.geometry); if (!g) return; const q = repPoint(g);
+      if (!q || q[0] < b.minE || q[0] > b.maxE || q[1] < b.minN || q[1] > b.maxN) return;
+      const p = f.properties || {}, key = p.lamningsnummer || p.raa_nummer || f.id; if (seen.has(key)) return; seen.add(key);
+      out.push({ p, g, raa: true });
+    });
+    pages++; onProg && onProg(out.length);
+    const nx = (r.links || []).find(l => l.rel === 'next'); url = fs.length && nx ? nx.href.replace(/^http:/, 'https:') : null;
+  }
+  return out;
+}
+const isForn = (p) => { const bk = lamnInfo(p).bk; return bk === 'forn' || bk === 'moj'; };
+// Alla lämningar som ska visas: importerade + hämtade från RAÄ (utan dubbletter), filtrerade på vald bedömning
+function lamnList() {
+  const keys = new Set(), out = [];
+  S.feats.lamn.forEach(it => { const k = it.p.lamningsnummer || it.p.raa_nummer; if (k) keys.add(k); out.push(it); });
+  (S.raa || []).forEach(it => { const k = it.p.lamningsnummer || it.p.raa_nummer; if (k && keys.has(k)) return; out.push(it); });
+  return S.lamnFilter === 'forn' ? out.filter(it => isForn(it.p)) : out;
+}
+
 // =====================================================================
 // Import av GeoJSON
 // =====================================================================
@@ -737,7 +771,7 @@ function featBBox(list) {
 // =====================================================================
 function setArea(E0, N0, R, src) {
   S.area = { E0: Math.round(E0), N0: Math.round(N0), R, src }; resetBase();
-  if (S.dem && (Math.abs(S.dem.x0 + R - S.area.E0) > 1 || Math.abs(S.dem.y0 + R - S.area.N0) > 1 || S.dem.nx * S.dem.ds < 2 * R - 1)) { S.dem = null; S.strand = null; S.curve = null; statList.length = 0; renderStat(); }
+  if (S.dem && (Math.abs(S.dem.x0 + R - S.area.E0) > 1 || Math.abs(S.dem.y0 + R - S.area.N0) > 1 || S.dem.nx * S.dem.ds < 2 * R - 1)) { S.dem = null; S.strand = null; S.curve = null; S.raa = []; statList.length = 0; renderStat(); }
   S.demo = false;
   renderSetup();
 }
@@ -745,7 +779,9 @@ const bboxOf = (a) => ({ minE: a.E0 - a.R, maxE: a.E0 + a.R, minN: a.N0 - a.R, m
 const statList = [];
 function stat(id, cls, title, txt, t0) { let s = statList.find(x => x.id === id); if (!s) { s = { id }; statList.push(s); } Object.assign(s, { cls, title, txt, t0: cls === 'pending' ? (t0 || s.t0 || Date.now()) : null }); renderStat(); }
 function renderStat() { $('statList').innerHTML = statList.map(s => `<li class="${s.cls}"><i></i><div><b>${esc(s.title)}</b><span>${esc(s.txt)}${s.cls === 'pending' && s.t0 ? ` · ${Math.round((Date.now() - s.t0) / 1000)} s` : ''}</span></div></li>`).join(''); }
+function setLamnFilter(v) { S.lamnFilter = v; store.set('lamnFilter', v); document.querySelectorAll('#segLamn button, #segLamn2 button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); if (MODE && pinGroup) { buildPins(); drawOverlay(); lastPins = 0; } }
 function renderSetup() {
+  document.querySelectorAll('#segLamn button, #segLamn2 button').forEach(b => b.classList.toggle('on', b.dataset.v === S.lamnFilter));
   document.querySelectorAll('#segR button').forEach(b => b.classList.toggle('on', +b.dataset.r === (S.area ? S.area.R : radius)));
   const a = S.area, at = $('areaTxt');
   if (a) { at.classList.remove('empty'); at.textContent = `N ${fmt(a.N0)} · E ${fmt(a.E0)} · radie ${fmt(a.R)} m${a.src ? ' · ' + a.src : ''}`; }
@@ -785,7 +821,7 @@ async function fetchAll() {
   if (!S.area) return;
   const b = bboxOf(S.area), R = S.area.R, ds = R <= 600 ? 2.5 : R <= 1000 ? 5 : 7.5;
   FETCH.cancel = false; FETCH.on = true; renderSetup();
-  const prev = !S.demo && S.dem ? { dem: S.dem, strand: S.strand } : null;
+  const prev = !S.demo && S.dem ? { dem: S.dem, strand: S.strand, raa: S.raa } : null;
   statList.length = 0; S.demo = false; S.dem = null; S.strand = null; S.curve = null;
   const t0 = Date.now(); const tick = setInterval(renderStat, 1000);
   stat('dem', 'pending', 'Höjdmodell', 'Hämtar Lantmäteriets höjdmodell…', t0);
@@ -809,7 +845,9 @@ async function fetchAll() {
   stat('karta', 'pending', 'Bakgrundskarta', 'Hämtar topografisk karta och flygbild…', t0);
   const mapJob = (async () => { const tp = await buildBasemap(S.area, 'topo', (d, n) => stat('karta', 'pending', 'Bakgrundskarta', `Topografisk karta… ${d} av ${n} plattor`, t0)); BASE.topo = tp.cv; BASE.url.topo = tp.url; try { const fo = await buildBasemap(S.area, 'foto', (d, n) => stat('karta', 'pending', 'Bakgrundskarta', `Flygbild… ${d} av ${n} plattor`, t0)); BASE.foto = fo.cv; BASE.url.foto = fo.url; } catch (e) { if (FETCH.cancel) throw e; } return tp; })();
   const sguJob = fetchStrand(b, (d) => stat('strand', 'pending', 'Strandförskjutning', `Hämtar SGU:s modell… ${d} tidssteg klara`, t0));
-  const [rd, rs, rm] = await Promise.allSettled([demJob, sguJob, mapJob]);
+  stat('raa', 'pending', 'Lämningar (RAÄ)', 'Hämtar lämningar från Kulturmiljöregistret…', t0);
+  const raaJob = fetchRAA(b, (n) => stat('raa', 'pending', 'Lämningar (RAÄ)', `Hämtar lämningar… ${fmt(n)} hittills`, t0));
+  const [rd, rs, rm, rr] = await Promise.allSettled([demJob, sguJob, mapJob, raaJob]);
   clearInterval(tick);
   const cancelled = FETCH.cancel; FETCH.on = false; FETCH.cancel = false;
   let keptDem = false;
@@ -830,6 +868,9 @@ async function fetchAll() {
   if (rm.status === 'fulfilled') stat('karta', 'ok', 'Bakgrundskarta', `Esri topografisk karta${BASE.foto ? ' och flygbild' : ''}${BASE.url.topo ? ' · sparas för användning utan nät' : ' · kan inte sparas, kräver nät'}`);
   else stat('karta', 'err', 'Bakgrundskarta', cancelled ? 'Avbruten.' : `Kunde inte hämtas (${rm.reason && rm.reason.message}). Minikartan visar terrängskuggning i stället.`);
   S.manualL = null;
+  if (rr.status === 'fulfilled') { S.raa = rr.value; const nf = S.raa.filter(it => isForn(it.p)).length; stat('raa', 'ok', 'Lämningar (RAÄ)', `${fmt(S.raa.length)} lämningar i området, varav ${fmt(nf)} fornlämningar eller möjliga fornlämningar`); }
+  else if (prev && prev.raa && prev.raa.length) { S.raa = prev.raa; stat('raa', 'ok', 'Lämningar (RAÄ)', `RAÄ svarade inte nu (${rr.reason && rr.reason.message}) – använder de tidigare hämtade ${fmt(S.raa.length)} lämningarna`); }
+  else { S.raa = []; stat('raa', 'err', 'Lämningar (RAÄ)', cancelled ? 'Avbruten.' : `Kunde inte hämtas (${rr.reason && rr.reason.message}). Du kan importera lämningar som GeoJSON i steg 2 i stället.`); }
   if (S.dem) await saveArea();
   renderSetup();
   if (!cancelled && (rd.status !== 'fulfilled' || rs.status !== 'fulfilled' || !S.dem.src.startsWith('Lantm'))) diagnose();
@@ -842,6 +883,7 @@ async function diagnose() {
     ['Lantmäteriets höjdmodell (JSONP)', () => jsonp(`${LST_DEM}?geometry=${E},${N}&geometryType=esriGeometryPoint&returnFirstValueOnly=true&f=json`, 15000).then(r => `${fmt(parseFloat(r.samples[0].value), 1)} m ö.h.`)],
     ['SGU strandförskjutning', () => sguGet('bp5000-5900', `SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=bp5000-5900&STYLES=&SRS=EPSG:3006&BBOX=${E - 200},${N - 200},${E + 200},${N + 200}&WIDTH=16&HEIGHT=16&FORMAT=${encodeURIComponent('application/json;type=utfgrid')}&CQL_FILTER=${encodeURIComponent('year=-3050')}`, 20000).then(() => SGU_MODE ? 'svarar (via tjänstens gemensamma adress)' : 'svarar')],
     ['AWS höjdplattor (reserv)', () => { const n = 2 ** 13, fx = Math.floor((lon + 180) / 360 * n), r = lat * D2R, fy = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return loadTerrTile(13, fx + '/' + fy).then(() => 'svarar'); }],
+    ['RAÄ lämningar (KMR)', () => getJSON(`${KMR_OGC}?f=application/json&limit=1&bbox=${wgsBox({ minE: E - 1500, maxE: E + 1500, minN: N - 1500, maxN: N + 1500 })}`, 20000).then(r => `svarar${r.numberMatched != null ? ` · ${fmt(r.numberMatched)} lämningar inom 1,5 km` : ''}`)],
     ['Esri bakgrundskarta', () => { const n = 2 ** 14, fx = Math.floor((lon + 180) / 360 * n), r = lat * D2R, fy = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); return loadImg(`${BASE_SRC.topo}14/${fy}/${fx}`, true, 15000).then(() => 'svarar'); }],
     ['Open-Meteo höjd (reserv)', () => getJSON(`https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(5)}&longitude=${lon.toFixed(5)}`, 15000).then(r => `${fmt(r.elevation[0], 0)} m ö.h.`)],
   ];
@@ -857,13 +899,13 @@ async function diagnose() {
 }
 async function saveArea() {
   S.savedAt = new Date().toLocaleString('sv-SE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  const ok = await IDB.put('last', { area: S.area, dem: S.dem, strand: S.strand, feats: S.feats, files: S.files, savedAt: S.savedAt, stat: statList.slice().map(x => Object.assign({}, x, { t0: null })), base: { topo: BASE.url.topo, foto: BASE.url.foto } });
+  const ok = await IDB.put('last', { area: S.area, dem: S.dem, strand: S.strand, feats: S.feats, files: S.files, savedAt: S.savedAt, stat: statList.slice().map(x => Object.assign({}, x, { t0: null })), base: { topo: BASE.url.topo, foto: BASE.url.foto }, raa: S.raa || [] });
   if (!ok) S.savedAt = null;
 }
 async function saveFiles() { if (S.demo) return; const d = await IDB.get('last'); if (d) { d.feats = S.feats; d.files = S.files; await IDB.put('last', d); } }
 async function restore() {
   const d = await IDB.get('last'); if (!d || !d.area) return;
-  S.area = d.area; S.dem = d.dem || null; S.strand = d.strand || null; S.feats = Object.assign({ zones: [], classes: [], study: [], lamn: [], egen: [] }, d.feats || {}); S.files = d.files || [];
+  S.area = d.area; S.dem = d.dem || null; S.strand = d.strand || null; S.raa = d.raa || []; S.feats = Object.assign({ zones: [], classes: [], study: [], lamn: [], egen: [] }, d.feats || {}); S.files = d.files || [];
   S.curve = buildCurve(S.strand, S.dem); S.savedAt = d.savedAt; radius = S.area.R;
   (d.stat || []).forEach(s => statList.push(s)); renderStat();
   renderSetup();
@@ -879,7 +921,7 @@ function loadDemo() {
     const knoll = 12 * Math.exp(-((x + 330) ** 2 + (y - 320) ** 2) / (2 * 110 ** 2));
     z[j * nx + i] = Math.max(0, 6 + 0.02 * (x + R) + ridge + knoll + 2.5 * Math.sin(x / 70) * Math.cos(y / 95));
   }
-  S.area = { E0, N0, R, src: 'exempel' }; resetBase();
+  S.area = { E0, N0, R, src: 'exempel' }; resetBase(); S.raa = [];
   S.dem = { x0: E0 - R, y0: N0 - R, ds, nx, ny, z, src: 'Exempel – påhittad terräng' };
   S.strand = null;
   const pts = []; for (let y = -7000; y <= 1900; y += 100) pts.push([y, 64 * Math.pow((1900 - y) / 8900, 1.18)]);
@@ -1057,7 +1099,7 @@ function drawOverlay() {
     if (it.g.lines.length) { lines(it.g.lines); x.strokeStyle = col; x.lineWidth = m(1); x.stroke(); }
     it.g.pts.forEach(q => { x.beginPath(); x.arc(tx(q[0]), ty(q[1]), m(2.5), 0, Math.PI * 2); x.fillStyle = col + '88'; x.fill(); x.strokeStyle = col; x.lineWidth = m(0.6); x.stroke(); });
   });
-  if (S.lay.lamn) drawItems(S.feats.lamn, it => lamnInfo(it.p).color);
+  if (S.lay.lamn) drawItems(lamnList(), it => lamnInfo(it.p).color);
   if (S.lay.egen) drawItems(S.feats.egen, () => LAMN_COLOR.egen);
   if (overlayTex) overlayTex.needsUpdate = true;
 }
@@ -1090,10 +1132,10 @@ function buildPins() {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, sizeAttenuation: false, transparent: true }));
     sprite.center.set(0.5, 0); sprite.position.copy(top); line.renderOrder = 9; sprite.renderOrder = 10;
     const obj = new THREE.Group(); obj.add(line); obj.add(sprite); obj.visible = false; pinGroup.add(obj);
-    PINS.push({ kind, it, E, N, z, top, obj, sprite, title, sub, color, b: -1, d: 0 });
+    PINS.push({ kind, it, E, N, z, base, top, obj, sprite, line, pole, pole0: pole, title, sub, color, b: -1, d: 0 });
   };
   S.feats.zones.forEach(it => { const q = repPoint(it.g); if (!q) return; add('zon', it, q[0], q[1], `Zon ${it.p.zon || ''}`.trim(), `${it.p.klass || ''} potential`, ZONE_COLOR[it.p.klass] || '#f2a541', 7); });
-  S.feats.lamn.forEach(it => { const q = repPoint(it.g); if (!q) return; const i = lamnInfo(it.p); add('lamn', it, q[0], q[1], it.p.lamningstyp || 'Lämning', it.p.lamningsnummer || it.p.raa_nummer || '', i.color, 3); });
+  lamnList().forEach(it => { const q = repPoint(it.g); if (!q) return; const i = lamnInfo(it.p); add('lamn', it, q[0], q[1], it.p.lamningstyp || 'Lämning', it.p.lamningsnummer || it.p.raa_nummer || '', i.color, 3); });
   S.feats.egen.forEach(it => { const q = repPoint(it.g); if (!q) return; add('egen', it, q[0], q[1], labelOf(it.p), '', LAMN_COLOR.egen, 3); });
   sizePins();
 }
@@ -1117,15 +1159,18 @@ function declutter() {
   });
 }
 function updatePins() {
-  const cx = P.curE, cy = P.curN, near = [];
+  const cx = P.curE, cy = P.curN, near = [], tall = !!S.lay.hoga, maxD = tall ? 2000 : MAXD, maxN = tall ? 60 : MAXN;
   PINS.forEach(p => {
     p.d = Math.hypot(p.E - cx, p.N - cy); p.obj.visible = false;
     const on = p.kind === 'zon' ? S.lay.zon : p.kind === 'lamn' ? S.lay.lamn : S.lay.egen; if (!on) return;
-    if (p.kind === 'zon' ? p.d > 1600 : p.d > MAXD) return; near.push(p);
+    if (p.kind === 'zon' ? p.d > 1600 : p.d > maxD) return; near.push(p);
   });
   near.sort((a, b) => a.d - b.d);
-  near.slice(0, MAXN).forEach(p => {
+  near.slice(0, maxN).forEach(p => {
     p.obj.visible = true;
+    // höga nålar: stolpen växer med avståndet så att etiketten hamnar ca 7° över marken och går att trycka på långt bort
+    const pole = tall ? clamp(p.d * 0.12, p.pole0, 260) : p.pole0;
+    if (Math.abs(pole - p.pole) > 0.4) { p.pole = pole; p.top.set(p.base.x, p.base.y + pole, p.base.z); p.sprite.position.copy(p.top); const pa = p.line.geometry.attributes.position; pa.setXYZ(1, p.top.x, p.top.y, p.top.z); pa.needsUpdate = true; p.line.geometry.computeBoundingSphere(); }
     const b = distTxt(p.d);
     if (b !== p.b) {
       p.b = b; const sub = p.kind === 'zon' ? `${p.sub} · ${distTxt(p.d)}` : p.sub ? `${p.sub} · ${distTxt(p.d)}` : distTxt(p.d);
@@ -1133,7 +1178,7 @@ function updatePins() {
       const img = p.sprite.material.map.image, k = 2 * Math.tan(vfov / 2 * D2R) / (window.innerHeight || 800), h = p.pxH || 48;
       p.sprite.scale.set(h * img.width / img.height * k, h * k, 1); p.pxW = h * img.width / img.height;
     }
-    p.sprite.material.opacity = clamp(1.2 - p.d / MAXD * 0.6, 0.55, 1);
+    p.sprite.material.opacity = clamp(1.2 - p.d / maxD * 0.6, 0.55, 1);
   });
 }
 
@@ -1572,10 +1617,10 @@ function buildPeriodChips() {
 }
 const LAYERS = [
   { k: 'hav', n: 'Hav', c: '#57a9e8' }, { k: 'strand', n: 'Strandlinje', c: '#fff0c9' }, { k: 'pot', n: 'Potential', c: '#e5533c' },
-  { k: 'zon', n: 'Zoner', c: '#f2a541' }, { k: 'lamn', n: 'Lämningar', c: '#b88cf0' }, { k: 'egen', n: 'Egna lager', c: '#e8f1ff' }, { k: 'kurv', n: 'Höjdkurvor', c: '#ffffff' },
+  { k: 'zon', n: 'Zoner', c: '#f2a541' }, { k: 'lamn', n: 'Lämningar', c: '#b88cf0' }, { k: 'egen', n: 'Egna lager', c: '#e8f1ff' }, { k: 'kurv', n: 'Höjdkurvor', c: '#ffffff' }, { k: 'hoga', n: 'Höga nålar', c: '#d6b0f7' },
 ];
 function buildLayerChips() {
-  const has = { pot: S.feats.classes.length, zon: S.feats.zones.length || S.feats.study.length, lamn: S.feats.lamn.length, egen: S.feats.egen.length, hav: 1, strand: 1, kurv: 1 };
+  const has = { pot: S.feats.classes.length, zon: S.feats.zones.length || S.feats.study.length, lamn: S.feats.lamn.length || (S.raa || []).length, hoga: S.feats.lamn.length || (S.raa || []).length || S.feats.zones.length, egen: S.feats.egen.length, hav: 1, strand: 1, kurv: 1 };
   $('layChips').innerHTML = LAYERS.filter(l => has[l.k]).map(l => `<button type="button" data-k="${l.k}" class="${S.lay[l.k] ? 'on' : ''}" aria-pressed="${!!S.lay[l.k]}"><i style="background:${l.c}"></i>${l.n}</button>`).join('');
   U.uCont.value = S.lay.kurv ? CAL.cont : 0;
 }
@@ -1592,6 +1637,7 @@ $('layChips').addEventListener('click', e => {
   if (k === 'kurv') U.uCont.value = S.lay.kurv ? CAL.cont : 0;
   if (k === 'hav' || k === 'strand') setYear(S.year, true);
   if (k === 'pot' || k === 'zon' || k === 'lamn' || k === 'egen') drawOverlay();
+  if (k === 'hoga') { lastPins = 0; toast(S.lay.hoga ? 'Höga nålar: lämningar upp till 2 km bort visas med stolpar som når över skogen.' : 'Vanliga nålar.'); }
   lastPins = 0;
 });
 $('yr').addEventListener('input', e => { stopPlay(); LV.dur = 450; setYear(+e.target.value); });
@@ -1619,12 +1665,13 @@ function showCard(p) {
   } else if (p.kind === 'lamn') {
     const i = lamnInfo(pr);
     head = `<h3>${esc(pr.lamningstyp || 'Lämning')}</h3><div class="sub">${esc(pr.lamningsnummer || '')}${pr.raa_nummer ? ' · ' + esc(pr.raa_nummer) : ''}</div><span class="tag"><i style="background:${i.color}"></i>${esc(pr.antikvariskbedomning || BK_NAME[i.bk])}</span>`;
-    [['Namn', pr.lamningsnamn], ['Status', pr.aktualitetstatus], ['Kommun', pr.kommun]].forEach(r => r[1] && rows.push(r));
+    [['Namn', pr.lamningsnamn], ['Status', pr.aktualitetstatus], ['Kommun', pr.kommun], ['Källa', it.raa ? 'RAÄ Kulturmiljöregistret (hämtad)' : 'Importerad fil']].forEach(r => r[1] && rows.push(r));
   } else {
     head = `<h3>${esc(labelOf(pr))}</h3><span class="tag"><i style="background:${LAMN_COLOR.egen}"></i>Eget lager</span>`;
     Object.entries(pr).slice(0, 8).forEach(([k, v]) => { if (v != null && typeof v !== 'object' && String(v).length < 140) rows.push([k, String(v)]); });
   }
   $('card').innerHTML = `<button class="x" type="button" id="bCardX" aria-label="Stäng">×</button>${head}<dl class="kv">${rows.map(r => `<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('')}</dl>
+    ${pr.url && /^https:\/\//.test(pr.url) ? `<a class="btn ghost" href="${esc(pr.url)}" target="_blank" rel="noopener" style="text-decoration:none">Visa i Fornsök ↗</a>` : ''}
     <div class="acts">${MODE === 'ar' ? '<button class="btn" type="button" id="bAim">Rikta in mot den</button>' : ''}<button class="btn" type="button" id="bHere">Jag står här</button></div>`;
   showPanel('card');
   $('bCardX').onclick = () => showPanel('sheet');
@@ -1638,6 +1685,7 @@ function renderCal() {
   $('oH').textContent = `${CAL.hOff >= 0 ? '+' : ''}${fmt(CAL.hOff, 1)} m`;
   $('oEye').textContent = `${fmt(CAL.eye, 1)} m`; $('oFov').textContent = `${fmt(CAL.fov, 0)}°`;
   document.querySelectorAll('#segComp button').forEach(b => b.classList.toggle('on', (+b.dataset.v === 1) === !!CAL.lockCompass));
+  document.querySelectorAll('#segLamn2 button').forEach(b => b.classList.toggle('on', b.dataset.v === S.lamnFilter));
   document.querySelectorAll('#segCont button').forEach(b => b.classList.toggle('on', +b.dataset.v === CAL.cont));
   document.querySelectorAll('#segWd button').forEach(b => b.classList.toggle('on', +b.dataset.v === (CAL.waterD || 0)));
   const own = S.manualL != null;
@@ -1655,6 +1703,7 @@ $('calib').addEventListener('click', e => {
   if (b.dataset.c === 'lvl') { S.manualL = Math.round((S.manualL + d) * 10) / 10; setYear(S.year); }
   saveCal(); renderCal();
 });
+['segLamn', 'segLamn2'].forEach(id => $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (b) setLamnFilter(b.dataset.v); }));
 $('segCont').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; CAL.cont = +b.dataset.v; saveCal(); if (S.lay.kurv) U.uCont.value = CAL.cont; renderCal(); });
 $('segWd').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; CAL.waterD = +b.dataset.v; saveCal(); applyWaterD(); renderCal(); });
 $('segComp').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; CAL.lockCompass = b.dataset.v === '1'; saveCal(); renderCal(); });
