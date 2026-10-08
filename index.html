@@ -237,7 +237,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <button class="btn wide" id="bDesk" type="button" disabled>Testa vid skrivbordet</button>
       <button class="btn wide ghost" id="bDemo" type="button">Visa exempel</button>
     </div>
-    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-09-30l</span></p>
+    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-10-08</span></p>
   </div>
 </main>
 
@@ -1027,6 +1027,8 @@ function initScene() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
     renderer.setClearColor(0x000000, 0);
     camera = new THREE.PerspectiveCamera(60, 1, 1.0, 6000);
+    $('gl').addEventListener('webglcontextlost', e => { e.preventDefault(); toast('Grafiken behövde startas om…'); }, false);
+    $('gl').addEventListener('webglcontextrestored', () => { if (MODE) { initScene(); applyWaterD(); setYear(S.year, true); onResize(); } }, false);
   }
   scene = new THREE.Scene();
   const d = S.dem, a = S.area, R = a.R;
@@ -1073,7 +1075,8 @@ function initScene() {
   WAT.cell = null;
   if (S.strand) { const st = S.strand; WAT.cell = new Int32Array(nx * ny); for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const E = d.x0 + i * d.ds, N = d.y0 + j * d.ds; WAT.cell[j * nx + i] = clamp(Math.floor((N - st.y0) / st.gs), 0, st.ny - 1) * st.nx + clamp(Math.floor((E - st.x0) / st.gs), 0, st.nx - 1); } }
   pinGroup = new THREE.Group(); scene.add(pinGroup);
-  buildPins(); drawOverlay(); buildMiniBase();
+  try { buildPins(); } catch (e) { console.error(e); PINS.length = 0; }
+  drawOverlay(); buildMiniBase();
 }
 
 // ---------- Överlager på marken ----------
@@ -1110,7 +1113,7 @@ function makeLabelCanvas(title, sub, color) {
   const m = document.createElement('canvas').getContext('2d');
   m.font = f1; const w1 = m.measureText(title).width; m.font = f2; const w2 = m.measureText(sub).width;
   const W = Math.ceil(Math.min(560, Math.max(w1, w2) + 70)), H = 96, c = document.createElement('canvas'); c.width = W; c.height = H + 14;
-  const x = c.getContext('2d');
+  const x = c.getContext('2d'); if (!x) return null;
   const r = 18; x.fillStyle = 'rgba(11,18,16,.84)'; x.strokeStyle = 'rgba(224,240,232,.3)'; x.lineWidth = 2;
   x.beginPath(); x.moveTo(r, 1); x.arcTo(W - 1, 1, W - 1, H, r); x.arcTo(W - 1, H, 0, H, r); x.lineTo(W / 2 + 10, H); x.lineTo(W / 2, H + 13); x.lineTo(W / 2 - 10, H); x.arcTo(1, H, 1, 1, r); x.arcTo(1, 1, W - 1, 1, r); x.closePath(); x.fill(); x.stroke();
   x.fillStyle = color; x.beginPath(); x.arc(30, 34, 9, 0, Math.PI * 2); x.fill();
@@ -1120,7 +1123,7 @@ function makeLabelCanvas(title, sub, color) {
 }
 function distTxt(d) { return d < 1000 ? `${fmt(Math.round(d / (d < 100 ? 1 : 5)) * (d < 100 ? 1 : 5))} m` : `${fmt(d / 1000, 1)} km`; }
 function buildPins() {
-  PINS.forEach(p => { p.sprite.material.map.dispose(); p.sprite.material.dispose(); });
+  PINS.forEach(p => { if (p.sprite.material.map) p.sprite.material.map.dispose(); p.sprite.material.dispose(); p.line.geometry.dispose(); p.line.material.dispose(); });
   PINS.length = 0; while (pinGroup.children.length) pinGroup.remove(pinGroup.children[0]);
   const a = S.area, R = a.R;
   const add = (kind, it, E, N, title, sub, color, pole) => {
@@ -1128,8 +1131,7 @@ function buildPins() {
     const z = demAt(S.dem, E, N), base = new THREE.Vector3(E - a.E0, z, -(N - a.N0)), top = base.clone(); top.y += pole;
     const lg = new THREE.BufferGeometry().setFromPoints([base, top]);
     const line = new THREE.Line(lg, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85, depthTest: false }));
-    const tex = new THREE.CanvasTexture(makeLabelCanvas(title, sub, color)); tex.minFilter = THREE.LinearFilter;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, sizeAttenuation: false, transparent: true }));
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: null, depthTest: false, depthWrite: false, sizeAttenuation: false, transparent: true }));
     sprite.center.set(0.5, 0); sprite.position.copy(top); line.renderOrder = 9; sprite.renderOrder = 10;
     const obj = new THREE.Group(); obj.add(line); obj.add(sprite); obj.visible = false; pinGroup.add(obj);
     PINS.push({ kind, it, E, N, z, base, top, obj, sprite, line, pole, pole0: pole, title, sub, color, b: -1, d: 0 });
@@ -1142,8 +1144,19 @@ function buildPins() {
 let vfov = 60;
 function sizePins() {
   const pxH = 48, sh = window.innerHeight || 800, k = 2 * Math.tan(vfov / 2 * D2R) / sh;
-  PINS.forEach(p => { const img = p.sprite.material.map.image; const h = pxH * img.height / 96; p.sprite.scale.set(h * img.width / img.height * k, h * k, 1); p.pxH = h; p.pxW = h * img.width / img.height; });
+  PINS.forEach(p => { const m = p.sprite.material.map; if (!m || !m.image) return; const img = m.image; const h = pxH * img.height / 96; p.sprite.scale.set(h * img.width / img.height * k, h * k, 1); p.pxH = h; p.pxW = h * img.width / img.height; });
 }
+// Etiketter skapas bara för nålar som visas och frigörs när de inte syns – annars tar bildminnet slut med tusentals lämningar
+function setLabel(p) {
+  const sub = p.kind === 'zon' ? `${p.sub} · ${distTxt(p.d)}` : p.sub ? `${p.sub} · ${distTxt(p.d)}` : distTxt(p.d);
+  const cv = makeLabelCanvas(p.title, sub, p.color); if (!cv) return false;
+  const old = p.sprite.material.map, tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
+  p.sprite.material.map = tex; p.sprite.material.needsUpdate = true; if (old) old.dispose();
+  const k = 2 * Math.tan(vfov / 2 * D2R) / (window.innerHeight || 800), h = 48 * cv.height / 96;
+  p.sprite.scale.set(h * cv.width / cv.height * k, h * k, 1); p.pxH = h; p.pxW = h * cv.width / cv.height;
+  return true;
+}
+function dropLabel(p) { const m = p.sprite.material.map; if (m) { m.dispose(); p.sprite.material.map = null; p.sprite.material.needsUpdate = true; } p.b = -1; }
 const MAXD = 650, MAXN = 30;
 function declutter() {
   const W = window.innerWidth, H = window.innerHeight, rects = [];
@@ -1166,18 +1179,15 @@ function updatePins() {
     if (p.kind === 'zon' ? p.d > 1600 : p.d > maxD) return; near.push(p);
   });
   near.sort((a, b) => a.d - b.d);
+  const shown = new Set(near.slice(0, maxN));
+  PINS.forEach(p => { if (!shown.has(p) && p.sprite.material.map) dropLabel(p); });
   near.slice(0, maxN).forEach(p => {
     p.obj.visible = true;
     // höga nålar: stolpen växer med avståndet så att etiketten hamnar ca 7° över marken och går att trycka på långt bort
     const pole = tall ? clamp(p.d * 0.12, p.pole0, 260) : p.pole0;
     if (Math.abs(pole - p.pole) > 0.4) { p.pole = pole; p.top.set(p.base.x, p.base.y + pole, p.base.z); p.sprite.position.copy(p.top); const pa = p.line.geometry.attributes.position; pa.setXYZ(1, p.top.x, p.top.y, p.top.z); pa.needsUpdate = true; p.line.geometry.computeBoundingSphere(); }
     const b = distTxt(p.d);
-    if (b !== p.b) {
-      p.b = b; const sub = p.kind === 'zon' ? `${p.sub} · ${distTxt(p.d)}` : p.sub ? `${p.sub} · ${distTxt(p.d)}` : distTxt(p.d);
-      const old = p.sprite.material.map; p.sprite.material.map = new THREE.CanvasTexture(makeLabelCanvas(p.title, sub, p.color)); p.sprite.material.map.minFilter = THREE.LinearFilter; old.dispose();
-      const img = p.sprite.material.map.image, k = 2 * Math.tan(vfov / 2 * D2R) / (window.innerHeight || 800), h = p.pxH || 48;
-      p.sprite.scale.set(h * img.width / img.height * k, h * k, 1); p.pxW = h * img.width / img.height;
-    }
+    if (b !== p.b || !p.sprite.material.map) { if (setLabel(p)) p.b = b; else p.obj.visible = false; }
     p.sprite.material.opacity = clamp(1.2 - p.d / maxD * 0.6, 0.55, 1);
   });
 }
