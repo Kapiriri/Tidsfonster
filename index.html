@@ -237,7 +237,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
       <button class="btn wide" id="bDesk" type="button" disabled>Testa vid skrivbordet</button>
       <button class="btn wide ghost" id="bDemo" type="button">Visa exempel</button>
     </div>
-    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-10-08</span></p>
+    <p class="foot">Kameravyn kräver att sidan öppnas via https i Safari och att du tillåter kamera, plats och rörelse. Lagren placeras med GPS och kompass, så räkna med några meters fel. Kalibrera mot en lämning du känner igen. Källor: Lantmäteriet (höjdmodell via Länsstyrelsen), SGU strandförskjutningsmodell, RAÄ Kulturmiljöregistret. <span class="mono">Version 2026-11-14</span></p>
   </div>
 </main>
 
@@ -946,19 +946,41 @@ function loadDemo() {
 // =====================================================================
 // 3D-scen
 // =====================================================================
-let renderer, scene, camera, terrain, water, overlayTex, overlayCv, pinGroup;
+let renderer, scene, camera, terrain, water, overlayTex, overlayCv, pinGroup, skyDome, glLost = false;
 const WAT = { sea: null, cell: null, inner: null, ring: null };
 const PINS = [];
-const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 }, uSun: { value: null }, uMaxD: { value: 300 }, uWater: { value: 1 }, uUnder: { value: 0 }, uSky: { value: null }, uExpo: { value: 1 } };
+const U = { uOver: { value: null }, uL: { value: -999 }, uShore: { value: 1 }, uCont: { value: 0 }, uDesk: { value: 0 }, uR: { value: 1000 }, uCam: { value: null }, uT: { value: 0 }, uHav: { value: 1 }, uSun: { value: null }, uMaxD: { value: 300 }, uWater: { value: 1 }, uUnder: { value: 0 }, uSky: { value: null }, uExpo: { value: 1 }, uZ0: { value: 0 }, uZ1: { value: 60 } };
 const TER_VS = `attribute float aSea; varying float vSea; varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
 void main(){ vSea=aSea; vUv=uv; vH=position.y; vN=normal; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
-const TER_FS = `uniform sampler2D uOver; uniform float uL; uniform float uShore; uniform float uCont; uniform float uDesk; uniform float uR; uniform vec3 uCam; uniform float uHav; uniform float uWater; uniform float uMaxD; uniform float uUnder; uniform float uExpo;
+const TER_FS = `uniform sampler2D uOver; uniform float uT; uniform float uL; uniform float uShore; uniform float uCont; uniform float uDesk; uniform float uR; uniform vec3 uCam; uniform float uHav; uniform float uWater; uniform float uMaxD; uniform float uUnder; uniform float uExpo; uniform vec3 uSun; uniform vec3 uSky; uniform float uZ0; uniform float uZ1;
 varying float vSea; varying vec2 vUv; varying float vH; varying vec3 vN; varying vec3 vW;
+float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),u.x),mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),u.x),u.y); }
+float fbm(vec2 p){ return noise(p)*0.55+noise(p*2.13+7.1)*0.30+noise(p*4.37+19.7)*0.15; }
+// Mark i skrivbordsläget: växtlighet som skiftar, berg i branter, sand och fuktig strand vid dåtidens hav, solljus och dis
+vec3 ground(float dist){
+  vec3 n=normalize(vN); if(n.y<0.0) n=-n;
+  vec3 l=normalize(vec3(uSun.x,max(uSun.y,0.42),uSun.z));
+  float nl=clamp(dot(n,l),0.0,1.0), slope=1.0-n.y;
+  float nearW=1.0-smoothstep(30.0,160.0,dist), midW=1.0-smoothstep(200.0,900.0,dist);
+  float big=fbm(vW.xz*0.012), mid=fbm(vW.xz*0.09), fine=noise(vW.xz*1.7);
+  float hN=clamp((vH-uZ0)/(uZ1-uZ0),0.0,1.0);
+  vec3 g=mix(vec3(0.25,0.40,0.19),vec3(0.42,0.52,0.25),big);
+  g=mix(g,vec3(0.54,0.55,0.36),smoothstep(0.45,1.0,hN)*0.35);
+  g=mix(g,vec3(0.47,0.46,0.43),smoothstep(0.10,0.30,slope));
+  g*=1.0+(mid-0.5)*0.26*midW*nearW+(mid-0.5)*0.08*midW+(fine-0.5)*0.20*nearW;
+  if(uHav>0.5){ float dh=vH-uL; float sand=1.0-smoothstep(0.5,2.2+big*2.0,dh);
+    g=mix(g,vec3(0.74,0.68,0.52)*(0.92+0.16*mid),sand);
+    g*=mix(0.66,1.0,smoothstep(0.0,0.45+0.25*sin(uT*0.55),dh)); }
+  g*=mix(vec3(0.46,0.52,0.60),vec3(1.10,1.05,0.96),nl);
+  return mix(g,uSky*vec3(1.10,1.06,1.02),(1.0-exp(-dist/1500.0))*0.85);
+}
 vec4 over(vec4 t, vec4 b){ float a=t.a+b.a*(1.0-t.a); vec3 c=(t.rgb*t.a+b.rgb*b.a*(1.0-t.a))/max(a,1e-4); return vec4(c,a); }
 void main(){
   vec4 col=vec4(0.0);
   float dist=distance(vW,uCam);
-  if(uDesk>0.5){ vec3 n=normalize(vN); if(n.y<0.0) n=-n; vec3 l=normalize(vec3(-0.5,0.55,0.45)); float sh=clamp(dot(n,l),0.0,1.0)*0.85+0.2; vec3 g=mix(vec3(0.36,0.45,0.31),vec3(0.62,0.60,0.47),smoothstep(0.0,60.0,vH))*sh; g=mix(g,vec3(0.76,0.81,0.82),smoothstep(250.0,1400.0,dist)*0.55); col=vec4(g,1.0); }
+  if(uDesk>0.5) col=vec4(ground(dist),1.0);
   vec4 ov=texture2D(uOver,vUv); ov.a*=1.0-smoothstep(700.0,1400.0,dist)*0.6; col=over(ov,col);
   if(uCont>0.0){ float f=vH/uCont; float w=max(fwidth(f),1e-4); float px=abs(fract(f+0.5)-0.5)/w; float idx=1.0-step(0.5,abs(mod(floor(f+0.5),5.0))); float cw=mix(0.9,1.6,idx); float core=1.0-smoothstep(cw,cw+0.9,px); float halo=1.0-smoothstep(cw+0.9,cw+2.6,px); float fade=(1.0-smoothstep(180.0,450.0,dist))*(1.0-smoothstep(0.22,0.45,w)); vec3 lc=(uHav>0.5 && vH<uL)?vec3(0.62,0.85,1.0):vec3(1.0); col=over(vec4(0.0,0.0,0.0,0.42*halo*fade),col); col=over(vec4(lc,0.95*core*fade),col); }
   if(uWater>0.5 && uHav>0.5 && uUnder<0.5 && vH<uL){ float wd=uL-vH; float fd=uMaxD>0.0?1.0-smoothstep(uMaxD*0.35,uMaxD,length(vW.xz-uCam.xz)):1.0; float ws=smoothstep(0.2,0.8,vSea)*fd; vec3 bed=mix(vec3(0.07,0.30,0.40),vec3(0.02,0.11,0.24),1.0-exp(-wd*0.35))*mix(0.8,1.15,(clamp(uExpo,0.55,1.2)-0.55)/0.65); col=over(vec4(bed,(0.42+0.45*(1.0-exp(-wd*0.4)))*smoothstep(0.0,0.025,wd)*ws),col); }
@@ -967,9 +989,20 @@ void main(){
   col.a*=e;
   gl_FragColor=col;
 }`;
+const SKY_VS = `varying vec3 vD; void main(){ vD=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`;
+const SKY_FS = `uniform vec3 uSky; uniform vec3 uSun; varying vec3 vD;
+void main(){
+  vec3 d=normalize(vD);
+  vec3 hor=uSky*vec3(1.10,1.06,1.02), zen=uSky*vec3(0.42,0.64,0.95);
+  vec3 c=mix(hor,zen,pow(clamp(d.y,0.0,1.0),0.5));
+  float s=max(dot(d,normalize(uSun)),0.0), up=smoothstep(0.0,0.2,uSun.y);
+  c+=vec3(1.0,0.90,0.72)*(pow(s,6.0)*0.10+pow(s,90.0)*0.22+pow(s,2200.0)*1.4)*up;
+  c=mix(c,uSky*vec3(0.86,0.88,0.84),smoothstep(0.0,-0.30,d.y));
+  gl_FragColor=vec4(c,1.0);
+}`;
 const WAT_VS = `uniform float uL; attribute float aZ; attribute float aSea; attribute float aSlope; varying float vDepth; varying float vSea; varying float vSlope; varying vec3 vW;
 void main(){ vDepth=uL-aZ; vSea=aSea; vSlope=aSlope; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
-const WAT_FS = `uniform float uT; uniform vec3 uCam; uniform float uR; uniform vec3 uSun; uniform float uMaxD; uniform vec3 uSky; uniform float uExpo;
+const WAT_FS = `uniform float uT; uniform vec3 uCam; uniform float uR; uniform vec3 uSun; uniform float uMaxD; uniform vec3 uSky; uniform float uExpo; uniform float uDesk;
 varying float vDepth; varying float vSea; varying float vSlope; varying vec3 vW;
 // Oregelbundna vågor: brus i två skalor som driver med vinden, plus en lång dyning. Detaljer tonas bort på avstånd.
 float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
@@ -996,7 +1029,8 @@ void main(){
   vec3 r=reflect(-V,n);
   // himlen som speglas tas från kamerabilden (ljusare nära horisonten, mörkare uppåt)
   vec3 skyH=uSky*0.95, skyZ=uSky*vec3(0.62,0.70,0.82);
-  vec3 sky=mix(skyH,skyZ,clamp(r.y*1.6,0.0,1.0));
+  if(uDesk>0.5){ skyH=uSky*vec3(1.10,1.06,1.02); skyZ=uSky*vec3(0.42,0.64,0.95); }
+  vec3 sky=mix(skyH,skyZ,pow(clamp(r.y,0.0,1.0),0.5));
   float depth=vDepth, ex=clamp(uExpo,0.55,1.2);
   vec3 shallow=vec3(0.09,0.32,0.37), deep=vec3(0.015,0.085,0.18);
   vec3 body=mix(shallow,deep,1.0-exp(-depth*0.30))*mix(0.8,1.15,(ex-0.55)/0.65);
@@ -1004,7 +1038,8 @@ void main(){
   body=mix(body,vec3(0.42,0.46,0.36)*ex,exp(-depth*3.5)*0.35);
   vec3 col=mix(body,sky,fres);
   float sunUp=smoothstep(-0.05,0.1,uSun.y);
-  col+=vec3(1.0,0.96,0.86)*pow(max(dot(r,uSun),0.0),260.0)*1.5*sunUp*(1.0-smoothstep(150.0,600.0,d))*clamp(ex,0.6,1.1);
+  float sr=max(dot(r,uSun),0.0);
+  col+=vec3(1.0,0.96,0.86)*(pow(sr,260.0)*1.5*(1.0-smoothstep(150.0,600.0,d))+pow(sr,28.0)*0.16)*sunUp*clamp(ex,0.6,1.1);
   // bränningar: skumränder som rullar in mot land (avstånd till strand ≈ djup / lutning)
   float hd=depth/max(vSlope,0.004);
   float roll=smoothstep(0.78,1.0,sin(hd*0.85-uT*1.7+noise(p*0.07)*4.0))*(1.0-smoothstep(3.0,22.0,hd))*(1.0-smoothstep(35.0,140.0,d));
@@ -1012,7 +1047,8 @@ void main(){
   col=mix(col,vec3(0.90,0.93,0.92)*min(ex,1.05),foam*0.55);
   // dis: vattnet långt bort går över i himlens färg
   float far=uMaxD>0.0?uMaxD:900.0;
-  col=mix(col,uSky*0.96,smoothstep(far*0.25,far,dh)*0.5);
+  col=mix(col,skyH,smoothstep(far*0.25,far,dh)*0.5);
+  if(uDesk>0.5) col=mix(col,skyH,(1.0-exp(-d/1500.0))*0.85);
   float a=mix(0.66,0.92,1.0-exp(-depth*0.45));
   a=max(a,fres*0.85); a=max(a,foam*0.6);
   a*=smoothstep(0.0,0.025,depth)*clamp(vSea,0.0,1.0);
@@ -1020,16 +1056,24 @@ void main(){
   if(uMaxD>0.0) a*=1.0-smoothstep(uMaxD*0.35,uMaxD,dh);
   gl_FragColor=vec4(col,a);
 }`;
+// Frigör grafikminnet för den förra scenen – annars ligger terräng, hav och överlager kvar varje gång vyn öppnas på nytt
+function disposeScene() {
+  PINS.forEach(freePin);
+  [terrain, WAT.inner, WAT.ring, skyDome].forEach(m => { if (m) { m.geometry.dispose(); m.material.dispose(); } });
+  if (overlayTex) overlayTex.dispose();
+  terrain = water = overlayTex = pinGroup = skyDome = scene = null; WAT.inner = WAT.ring = WAT.sea = WAT.cell = null; U.uOver.value = null;
+}
 function initScene() {
   init3();
   if (!renderer) {
     renderer = new THREE.WebGLRenderer({ canvas: $('gl'), alpha: true, antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
+    renderer.setPixelRatio(PERF.pr);
     renderer.setClearColor(0x000000, 0);
     camera = new THREE.PerspectiveCamera(60, 1, 1.0, 6000);
-    $('gl').addEventListener('webglcontextlost', e => { e.preventDefault(); toast('Grafiken behövde startas om…'); }, false);
-    $('gl').addEventListener('webglcontextrestored', () => { if (MODE) { initScene(); applyWaterD(); setYear(S.year, true); onResize(); } }, false);
+    $('gl').addEventListener('webglcontextlost', e => { e.preventDefault(); glLost = true; toast('Grafiken behövde startas om…'); }, false);
+    $('gl').addEventListener('webglcontextrestored', () => { glLost = false; if (MODE) { try { initScene(); applyWaterD(); setYear(S.year, true); onResize(); } catch (err) { console.error(err); toast('Grafiken kunde inte startas om. Stäng vyn och öppna den igen.', true); } } }, false);
   }
+  disposeScene();
   scene = new THREE.Scene();
   const d = S.dem, a = S.area, R = a.R;
   U.uR.value = R;
@@ -1044,10 +1088,15 @@ function initScene() {
   const idx = new (nx * ny > 65535 ? Uint32Array : Uint16Array)((nx - 1) * (ny - 1) * 6); let n = 0;
   for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) { const A = j * nx + i, B = A + 1, C = A + nx, D = C + 1; idx[n++] = A; idx[n++] = B; idx[n++] = C; idx[n++] = B; idx[n++] = D; idx[n++] = C; }
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1)); g.computeVertexNormals();
-  overlayCv = document.createElement('canvas'); overlayCv.width = overlayCv.height = 2048;
+  let z0 = Infinity, z1 = -Infinity; for (let k = 0; k < d.z.length; k++) { const v = d.z[k]; if (v < z0) z0 = v; if (v > z1) z1 = v; }
+  U.uZ0.value = z0; U.uZ1.value = Math.max(z1, z0 + 8);
+  if (!overlayCv) { overlayCv = document.createElement('canvas'); overlayCv.width = overlayCv.height = 2048; }
   overlayTex = new THREE.CanvasTexture(overlayCv); overlayTex.anisotropy = renderer.capabilities.getMaxAnisotropy(); U.uOver.value = overlayTex;
   const tm = new THREE.ShaderMaterial({ uniforms: U, vertexShader: TER_VS, fragmentShader: TER_FS, transparent: true, depthWrite: true, side: THREE.DoubleSide, extensions: { derivatives: true } });
   terrain = new THREE.Mesh(g, tm); terrain.renderOrder = 0; scene.add(terrain);
+  // himmel i skrivbordsläget: följer blicken, så att horisonten ligger rätt när man tittar upp eller ned
+  skyDome = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), new THREE.ShaderMaterial({ uniforms: U, vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthTest: false, depthWrite: false }));
+  skyDome.renderOrder = -10; skyDome.frustumCulled = false; skyDome.visible = MODE === 'desk'; scene.add(skyDome);
   // forntida hav: ett rutnät i strandnivå med djup (strandnivå − mark) och SGU:s havsmask per punkt
   const wmat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: WAT_VS, fragmentShader: WAT_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, extensions: { derivatives: true }, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
   const wgeo = new THREE.BufferGeometry(), wpos = new Float32Array(nx * ny * 3);
@@ -1108,11 +1157,12 @@ function drawOverlay() {
 }
 
 // ---------- Nålar med etiketter ----------
-function makeLabelCanvas(title, sub, color) {
+let _mctx = null;
+function makeLabelCanvas(title, sub, color, reuse) {
   const f1 = '600 32px "IBM Plex Sans", system-ui, sans-serif', f2 = '500 25px "IBM Plex Mono", ui-monospace, monospace';
-  const m = document.createElement('canvas').getContext('2d');
+  const m = _mctx || (_mctx = document.createElement('canvas').getContext('2d')); if (!m) return null;
   m.font = f1; const w1 = m.measureText(title).width; m.font = f2; const w2 = m.measureText(sub).width;
-  const W = Math.ceil(Math.min(560, Math.max(w1, w2) + 70)), H = 96, c = document.createElement('canvas'); c.width = W; c.height = H + 14;
+  const W = Math.ceil(Math.min(560, Math.max(w1, w2) + 70)), H = 96, c = reuse || document.createElement('canvas'); c.width = W; c.height = H + 14;
   const x = c.getContext('2d'); if (!x) return null;
   const r = 18; x.fillStyle = 'rgba(11,18,16,.84)'; x.strokeStyle = 'rgba(224,240,232,.3)'; x.lineWidth = 2;
   x.beginPath(); x.moveTo(r, 1); x.arcTo(W - 1, 1, W - 1, H, r); x.arcTo(W - 1, H, 0, H, r); x.lineTo(W / 2 + 10, H); x.lineTo(W / 2, H + 13); x.lineTo(W / 2 - 10, H); x.arcTo(1, H, 1, 1, r); x.arcTo(1, 1, W - 1, 1, r); x.closePath(); x.fill(); x.stroke();
@@ -1123,44 +1173,54 @@ function makeLabelCanvas(title, sub, color) {
 }
 function distTxt(d) { return d < 1000 ? `${fmt(Math.round(d / (d < 100 ? 1 : 5)) * (d < 100 ? 1 : 5))} m` : `${fmt(d / 1000, 1)} km`; }
 function buildPins() {
-  PINS.forEach(p => { if (p.sprite.material.map) p.sprite.material.map.dispose(); p.sprite.material.dispose(); p.line.geometry.dispose(); p.line.material.dispose(); });
+  PINS.forEach(freePin);
   PINS.length = 0; while (pinGroup.children.length) pinGroup.remove(pinGroup.children[0]);
   const a = S.area, R = a.R;
   const add = (kind, it, E, N, title, sub, color, pole) => {
     if (Math.abs(E - a.E0) > R || Math.abs(N - a.N0) > R) return;
     const z = demAt(S.dem, E, N), base = new THREE.Vector3(E - a.E0, z, -(N - a.N0)), top = base.clone(); top.y += pole;
-    const lg = new THREE.BufferGeometry().setFromPoints([base, top]);
-    const line = new THREE.Line(lg, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85, depthTest: false }));
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: null, depthTest: false, depthWrite: false, sizeAttenuation: false, transparent: true }));
-    sprite.center.set(0.5, 0); sprite.position.copy(top); line.renderOrder = 9; sprite.renderOrder = 10;
-    const obj = new THREE.Group(); obj.add(line); obj.add(sprite); obj.visible = false; pinGroup.add(obj);
-    PINS.push({ kind, it, E, N, z, base, top, obj, sprite, line, pole, pole0: pole, title, sub, color, b: -1, d: 0 });
+    PINS.push({ kind, it, E, N, z, base, top, obj: null, sprite: null, line: null, cv: null, pole, pole0: pole, title, sub, color, b: -1, d: 0 });
   };
   S.feats.zones.forEach(it => { const q = repPoint(it.g); if (!q) return; add('zon', it, q[0], q[1], `Zon ${it.p.zon || ''}`.trim(), `${it.p.klass || ''} potential`, ZONE_COLOR[it.p.klass] || '#f2a541', 7); });
   lamnList().forEach(it => { const q = repPoint(it.g); if (!q) return; const i = lamnInfo(it.p); add('lamn', it, q[0], q[1], it.p.lamningstyp || 'Lämning', it.p.lamningsnummer || it.p.raa_nummer || '', i.color, 3); });
   S.feats.egen.forEach(it => { const q = repPoint(it.g); if (!q) return; add('egen', it, q[0], q[1], labelOf(it.p), '', LAMN_COLOR.egen, 3); });
   sizePins();
 }
+// 3D-objekten (stolpe + etikett) finns bara för de nålar som visas just nu. Övriga nålar är bara data,
+// så tusentals lämningar kostar varken grafikminne eller tid i varje bildruta.
+function makePin(p) {
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([p.base, p.top]), new THREE.LineBasicMaterial({ color: p.color, transparent: true, opacity: 0.85, depthTest: false }));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: null, depthTest: false, depthWrite: false, sizeAttenuation: false, transparent: true }));
+  sprite.center.set(0.5, 0); sprite.position.copy(p.top); line.renderOrder = 9; sprite.renderOrder = 10;
+  const obj = new THREE.Group(); obj.add(line); obj.add(sprite); obj.visible = false; pinGroup.add(obj);
+  p.obj = obj; p.sprite = sprite; p.line = line; p.b = -1;
+}
+function freePin(p) {
+  if (!p.obj) return;
+  const m = p.sprite.material; if (m.map) m.map.dispose(); m.dispose(); p.line.geometry.dispose(); p.line.material.dispose();
+  if (p.obj.parent) p.obj.parent.remove(p.obj);
+  p.obj = p.sprite = p.line = p.cv = null; p.b = -1;
+}
 let vfov = 60;
 function sizePins() {
   const pxH = 48, sh = window.innerHeight || 800, k = 2 * Math.tan(vfov / 2 * D2R) / sh;
-  PINS.forEach(p => { const m = p.sprite.material.map; if (!m || !m.image) return; const img = m.image; const h = pxH * img.height / 96; p.sprite.scale.set(h * img.width / img.height * k, h * k, 1); p.pxH = h; p.pxW = h * img.width / img.height; });
+  PINS.forEach(p => { if (!p.sprite) return; const m = p.sprite.material.map; if (!m || !m.image) return; const img = m.image; const h = pxH * img.height / 96; p.sprite.scale.set(h * img.width / img.height * k, h * k, 1); p.pxH = h; p.pxW = h * img.width / img.height; });
 }
-// Etiketter skapas bara för nålar som visas och frigörs när de inte syns – annars tar bildminnet slut med tusentals lämningar
+// Etiketten ritas om i samma bildyta när avståndet ändras, i stället för att en ny textur skapas varje gång
 function setLabel(p) {
   const sub = p.kind === 'zon' ? `${p.sub} · ${distTxt(p.d)}` : p.sub ? `${p.sub} · ${distTxt(p.d)}` : distTxt(p.d);
-  const cv = makeLabelCanvas(p.title, sub, p.color); if (!cv) return false;
-  const old = p.sprite.material.map, tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
-  p.sprite.material.map = tex; p.sprite.material.needsUpdate = true; if (old) old.dispose();
+  const cv = makeLabelCanvas(p.title, sub, p.color, p.cv); if (!cv) return false; p.cv = cv;
+  let tex = p.sprite.material.map;
+  if (tex) tex.needsUpdate = true;
+  else { tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false; p.sprite.material.map = tex; p.sprite.material.needsUpdate = true; }
   const k = 2 * Math.tan(vfov / 2 * D2R) / (window.innerHeight || 800), h = 48 * cv.height / 96;
   p.sprite.scale.set(h * cv.width / cv.height * k, h * k, 1); p.pxH = h; p.pxW = h * cv.width / cv.height;
   return true;
 }
-function dropLabel(p) { const m = p.sprite.material.map; if (m) { m.dispose(); p.sprite.material.map = null; p.sprite.material.needsUpdate = true; } p.b = -1; }
 const MAXD = 650, MAXN = 30;
 function declutter() {
   const W = window.innerWidth, H = window.innerHeight, rects = [];
-  const vis = PINS.filter(p => p.obj.visible).sort((a, b) => (a.kind === 'zon') - (b.kind === 'zon') || a.d - b.d);
+  const vis = PINS.filter(p => p.obj && p.obj.visible).sort((a, b) => (a.kind === 'zon') - (b.kind === 'zon') || a.d - b.d);
   vis.forEach(p => {
     _v.copy(p.top).applyMatrix4(camera.matrixWorldInverse);
     if (_v.z > -0.5) { p.sprite.visible = false; return; }
@@ -1174,18 +1234,20 @@ function declutter() {
 function updatePins() {
   const cx = P.curE, cy = P.curN, near = [], tall = !!S.lay.hoga, maxD = tall ? 2000 : MAXD, maxN = tall ? 60 : MAXN;
   PINS.forEach(p => {
-    p.d = Math.hypot(p.E - cx, p.N - cy); p.obj.visible = false;
+    p.d = Math.hypot(p.E - cx, p.N - cy); if (p.obj) p.obj.visible = false;
     const on = p.kind === 'zon' ? S.lay.zon : p.kind === 'lamn' ? S.lay.lamn : S.lay.egen; if (!on) return;
     if (p.kind === 'zon' ? p.d > 1600 : p.d > maxD) return; near.push(p);
   });
   near.sort((a, b) => a.d - b.d);
   const shown = new Set(near.slice(0, maxN));
-  PINS.forEach(p => { if (!shown.has(p) && p.sprite.material.map) dropLabel(p); });
-  near.slice(0, maxN).forEach(p => {
+  PINS.forEach(p => { if (p.obj && !shown.has(p)) freePin(p); });
+  shown.forEach(p => {
+    if (!p.obj) makePin(p);
     p.obj.visible = true;
     // höga nålar: stolpen växer med avståndet så att etiketten hamnar ca 7° över marken och går att trycka på långt bort
     const pole = tall ? clamp(p.d * 0.12, p.pole0, 260) : p.pole0;
-    if (Math.abs(pole - p.pole) > 0.4) { p.pole = pole; p.top.set(p.base.x, p.base.y + pole, p.base.z); p.sprite.position.copy(p.top); const pa = p.line.geometry.attributes.position; pa.setXYZ(1, p.top.x, p.top.y, p.top.z); pa.needsUpdate = true; p.line.geometry.computeBoundingSphere(); }
+    if (Math.abs(pole - p.pole) > 0.4) p.pole = pole;
+    if (Math.abs(p.top.y - (p.base.y + p.pole)) > 0.01 || p.sprite.position.y !== p.top.y) { p.top.set(p.base.x, p.base.y + p.pole, p.base.z); p.sprite.position.copy(p.top); const pa = p.line.geometry.attributes.position; pa.setXYZ(1, p.top.x, p.top.y, p.top.z); pa.needsUpdate = true; p.line.geometry.computeBoundingSphere(); }
     const b = distTxt(p.d);
     if (b !== p.b || !p.sprite.material.map) { if (setLabel(p)) p.b = b; else p.obj.visible = false; }
     p.sprite.material.opacity = clamp(1.2 - p.d / maxD * 0.6, 0.55, 1);
@@ -1374,6 +1436,7 @@ async function enterView(mode) {
   $('setup').hidden = true; $('view').hidden = false; $('view').classList.toggle('desk', mode === 'desk');
   $('cam').hidden = mode !== 'ar'; $('cDemo').hidden = !S.demo;
   U.uDesk.value = mode === 'desk' ? 1 : 0;
+  PERF.pr = Math.min(window.devicePixelRatio || 1, 3); PERF.ema = 16; PERF.t = 0; PERF.chk = performance.now() + 4000; if (renderer) renderer.setPixelRatio(PERF.pr);
   initScene(); applyWaterD(); lastSun = 0; if (!S.demo && mapStyle !== 'relief' && !BASE[mapStyle] && navigator.onLine !== false) ensureBase(mapStyle);
   buildPeriodChips(); buildLayerChips(); setYear(S.year, true); onResize(); showPanel('sheet');
   $('bLock').textContent = P.lock && mode === 'ar' ? 'Släpp position' : 'Lås position'; $('bLock').hidden = mode !== 'ar';
@@ -1390,6 +1453,8 @@ function exitView() {
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   try { wake && wake.release(); } catch (e) { } wake = null;
   $('view').hidden = true; $('setup').hidden = false; renderSetup();
+  // släpp grafikminnet när vyn stängs
+  try { disposeScene(); if (renderer) renderer.renderLists.dispose(); } catch (e) { console.error(e); }
 }
 function arFov() {
   const v = $('cam'), vw = v.videoWidth, vh = v.videoHeight, sw = window.innerWidth, sh = window.innerHeight;
@@ -1482,6 +1547,13 @@ function updateSeaChip(now) {
 
 // ---------- Bildloop ----------
 let loopOn = false, lastHud = 0, lastPins = 0, curAz = 0;
+// Upplösningen sänks stegvis om telefonen inte hinner med (under ca 28 bilder/s) – hellre något mjukare bild än hack och värme
+const PERF = { pr: Math.min(window.devicePixelRatio || 1, 3), ema: 16, t: 0, chk: 0 };
+function watchPerf(t) {
+  const dt = t - PERF.t; PERF.t = t; if (dt > 0 && dt < 250) PERF.ema += (dt - PERF.ema) * 0.05;
+  if (t < PERF.chk) return; PERF.chk = t + 2500;
+  if (PERF.ema > 36 && PERF.pr > 1) { PERF.pr = Math.max(1, PERF.pr - 0.5); renderer.setPixelRatio(PERF.pr); onResize(); PERF.ema = 22; }
+}
 function sunDir(lat, lon, date) {
   const d = date / 86400000 + 2440587.5 - 2451545.0, g = (357.529 + 0.98560028 * d) * D2R, q = 280.459 + 0.98564736 * d;
   const Ls = (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * D2R, ob = (23.439 - 0.00000036 * d) * D2R;
@@ -1499,6 +1571,8 @@ function updateSun() {
 function camHeight() { return demAt(S.dem, P.curE, P.curN) + CAL.eye + CAL.hOff; }
 function frame(t) {
   if (!loopOn) return; requestAnimationFrame(frame);
+  if (glLost || !scene || !terrain) return;
+  watchPerf(t);
   if (MODE === 'ar') {
     if (O.have) {
       devQuat(_qa, O.a, O.b, O.g, screenAngle());
@@ -1508,7 +1582,8 @@ function frame(t) {
   } else { _e.set(desk.pitch * D2R, -desk.yaw * D2R, 0, 'YXZ'); camera.quaternion.setFromEuler(_e); }
   P.curE += (P.E - P.curE) * 0.12; P.curN += (P.N - P.curN) * 0.12;
   const a = S.area; camera.position.set(P.curE - a.E0, camHeight(), -(P.curN - a.N0));
-  U.uCam.value.copy(camera.position); U.uT.value = t / 1000;
+  U.uCam.value.copy(camera.position); U.uT.value = (t / 1000) % 3600; // håller vågornas tal små, annars blir de kantiga efter en lång stund
+  if (skyDome) { skyDome.visible = MODE === 'desk'; skyDome.position.copy(camera.position); }
   curAz = azOf(camera.quaternion).az;
   stepLevel(t); stepPlay(t); sampleSky(t);
   const ready = MODE !== 'ar' || P.have || P.lock;
@@ -1756,7 +1831,7 @@ $('gl').addEventListener('pointercancel', () => { drag.on = false; });
 function hitPin(x, y) {
   let best = null; camera.updateMatrixWorld();
   PINS.forEach(p => {
-    if (!p.obj.visible || !p.sprite.visible) return;
+    if (!p.obj || !p.obj.visible || !p.sprite.visible) return;
     _v.copy(p.top).applyMatrix4(camera.matrixWorldInverse); if (_v.z > -0.5) return;
     _v.copy(p.top).project(camera);
     const sx = (_v.x + 1) / 2 * window.innerWidth, sy = (1 - _v.y) / 2 * window.innerHeight, w = p.pxW || 120, h = p.pxH || 48;
